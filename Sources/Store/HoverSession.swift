@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import SwiftUI
 
 /// Shared hover/expand state. Driven by AppKit mouse tracking (more reliable than SwiftUI onHover on NSPanel).
 @MainActor
@@ -13,13 +14,28 @@ final class HoverSession: ObservableObject {
     }
 
     func expand(hovering id: ProviderID? = nil) {
-        if !isExpanded { isExpanded = true }
-        if let id { hovered = id }
+        if isExpanded {
+            setHovered(id)
+            return
+        }
+        withAnimation(Motion.expand) {
+            isExpanded = true
+            if let id { hovered = id }
+        }
     }
 
     func collapse() {
         guard !Self.forceExpanded else { return }
-        isExpanded = false
-        hovered = nil
+        withAnimation(Motion.collapse) {
+            isExpanded = false
+            hovered = nil
+        }
+    }
+
+    func setHovered(_ id: ProviderID?) {
+        guard let id, hovered != id else { return }
+        withAnimation(Motion.hover) {
+            hovered = id
+        }
     }
 }
