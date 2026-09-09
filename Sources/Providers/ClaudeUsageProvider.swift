@@ -1,11 +1,8 @@
 import Foundation
 
-/// Claude usage via `claude /usage` Process, with documented keychain/OAuth stub fallback.
-///
-/// Prefer the CLI: Claude Code rotates keychain items frequently, so borrowing
-/// the token often re-prompts. Asking `claude` itself uses a credential the CLI
-/// already holds. Keychain OAuth against `https://api.anthropic.com/api/oauth/usage`
-/// is only sketched as a TODO fallback when the binary is missing.
+/// Claude usage: `claude /usage` when it still prints quota lines, otherwise
+/// the OAuth usage endpoint with the token Claude Code already keeps in
+/// the keychain (`Claude Code-credentials`).
 actor ClaudeUsageProvider: UsageProvider {
     nonisolated let id: ProviderID = .claude
 
@@ -19,6 +16,27 @@ actor ClaudeUsageProvider: UsageProvider {
     }
 
     func fetch() async throws -> UsageReading {
+        if let windows = await cliWindows() {
+            return reading(windows)
+        }
+        let credential = try ClaudeOAuth.loadCredentialFromKeychain()
+        let windows = try await ClaudeOAuth.fetchWindows(session: session, credential: credential)
+        return reading(windows)
+    }
+
+    private func reading(_ windows: [UsageWindow]) -> UsageReading {
+        UsageReading(
+            id: .claude,
+            status: .ok,
+            windows: windows,
+            headlineID: "weekly_all",
+            fetchedAt: Date()
+        )
+    }
+
+    /// Nil when the CLI is missing, unsigned-in, or prints the post-2.1.233
+    /// contribution dump instead of `Current session: N% used`.
+    private func cliWindows() async -> [UsageWindow]? {
         let text: String
         do {
             let run = self.runCLI
@@ -27,23 +45,10 @@ actor ClaudeUsageProvider: UsageProvider {
                     continuation.resume(with: Result { try run() })
                 }
             }
-        } catch let error as UsageFetchError {
-            throw error
         } catch {
-            // TODO: Keychain fallback — read Claude Code OAuth token and GET
-            // https://api.anthropic.com/api/oauth/usage with anthropic-beta: oauth-2025-04-20.
-            // Intentionally not implemented here to avoid keychain prompts on every poll.
-            throw UsageFetchError.unavailable("claude CLI nicht gefunden oder fehlgeschlagen")
+            return nil
         }
-
-        let windows = try ClaudeUsageParser.parse(text)
-        return UsageReading(
-            id: .claude,
-            status: .ok,
-            windows: windows,
-            headlineID: "weekly_all",
-            fetchedAt: Date()
-        )
+        return try? ClaudeUsageParser.parse(text)
     }
 }
 
