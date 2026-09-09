@@ -21,55 +21,66 @@ struct NotchView: View {
     }
 
     private var pill: some View {
-        ZStack(alignment: .topLeading) {
+        Group {
             if hover.isExpanded {
-                VStack(spacing: Design.cellSpacing) {
-                    ForEach(ProviderID.allCases) { id in
-                        let reading = store.readings[id] ?? .empty(id)
-                        ProviderRingView(reading: reading, isHovered: hover.hovered == id)
-                    }
-                }
-                .padding(.top, Design.padTop)
-                .padding(.bottom, Design.padBottom)
-                .padding(.horizontal, (Design.bodyDepth - Design.ringDiameter) / 2)
-                .transition(.opacity)
+                expandedPill
             } else {
-                Color.clear
-                    .frame(width: Design.pillRestDepth + 4,
-                           height: Design.px(210))
-            }
-        }
-        .frame(width: hover.isExpanded ? Design.bodyDepth : Design.pillRestDepth + 4,
-               alignment: .leading)
-        .background(alignment: .leading) {
-            LeftEdgePill()
-                .fill(Palette.notch)
-                .frame(width: hover.isExpanded ? Design.bodyDepth : Design.pillRestDepth,
-                       height: hover.isExpanded ? nil : Design.px(210))
-                .shadow(color: Palette.shadow, radius: hover.isExpanded ? 14 : 6, x: 4, y: 0)
-        }
-        .overlay(alignment: .topLeading) {
-            if store.isDemo && hover.isExpanded {
-                Text(DE.demoBadge)
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.55))
-                    .padding(6)
+                collapsedHandle
             }
         }
     }
+
+    private var collapsedHandle: some View {
+        Color.clear
+            .frame(width: Design.pillRestDepth + 4, height: Design.px(210))
+            .background(alignment: .leading) {
+                LeftEdgePill()
+                    .fill(Palette.notch)
+                    .frame(width: Design.pillRestDepth, height: Design.px(210))
+                    .shadow(color: Palette.shadow, radius: 6, x: 3, y: 0)
+            }
+    }
+
+    private var expandedPill: some View {
+        VStack(spacing: Design.cellSpacing) {
+            ForEach(ProviderID.allCases) { id in
+                let reading = store.readings[id] ?? .empty(id)
+                ProviderRingView(reading: reading, isHovered: hover.hovered == id)
+                    .frame(width: Design.ringDiameter)
+            }
+        }
+        .padding(.top, Design.padTop)
+        .padding(.bottom, Design.padBottom)
+        .padding(.horizontal, (Design.bodyDepth - Design.ringDiameter) / 2)
+        .frame(width: Design.bodyDepth)
+        .background {
+            LeftEdgePill()
+                .fill(Palette.notch)
+                .shadow(color: Palette.shadow, radius: 14, x: 4, y: 0)
+        }
+        // Keep glyphs/% inside the bezel — critical for the bottom (Grok) label.
+        .clipShape(LeftEdgePill())
+        .overlay(alignment: .topLeading) {
+            if store.isDemo {
+                Text(DE.demoBadge)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .padding(8)
+            }
+        }
+        .fixedSize(horizontal: true, vertical: true)
+        .transition(.opacity)
+    }
 }
 
-/// Flat against the left screen edge; trailing side is a continuous half-capsule
-/// (large vertical radius) so the open state matches the Codenotch bezel look.
+/// Flat on the screen edge; trailing corners use a **depth-based** radius (Codenotch),
+/// never `height/2` — a full capsule eats the bottom percent label.
 struct LeftEdgePill: Shape {
     func path(in rect: CGRect) -> Path {
-        // Trailing radius = half height → true stadium / capsule end.
-        let r = min(rect.width, rect.height / 2)
+        let r = min(Design.pillCornerRadius, rect.width * 0.92, rect.height * 0.22)
         var path = Path()
-        // Top-left → top before arc
         path.move(to: CGPoint(x: rect.minX, y: rect.minY))
         path.addLine(to: CGPoint(x: rect.maxX - r, y: rect.minY))
-        // Top trailing quarter-circle into the right side
         path.addArc(
             center: CGPoint(x: rect.maxX - r, y: rect.minY + r),
             radius: r,
@@ -77,9 +88,7 @@ struct LeftEdgePill: Shape {
             endAngle: .degrees(0),
             clockwise: false
         )
-        // Right edge
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
-        // Bottom trailing quarter-circle
         path.addArc(
             center: CGPoint(x: rect.maxX - r, y: rect.maxY - r),
             radius: r,

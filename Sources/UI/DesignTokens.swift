@@ -1,34 +1,36 @@
 import SwiftUI
 
-/// Layout and colour tokens tuned to the Codenotch design frame.
+/// Layout tokens tuned to the Codenotch design frame (left-edge variant).
+/// Ring % labels must sit fully inside the pill — never clipped by the trailing curve.
 enum Design {
     /// Points per design-frame pixel (44pt ring / 117px).
     static let scale: CGFloat = 44.0 / 117.0
     static func px(_ pixels: CGFloat) -> CGFloat { pixels * scale }
 
-    /// Cap-height → point size for SF Pro (matches Codenotch Typography).
     private static let capRatio: CGFloat = 0.714
     static func fontSize(capPixels pixels: CGFloat) -> CGFloat {
         px(pixels) / capRatio
     }
 
     static let ringDiameter = px(117)
-    /// Thick dark track; thinner bright progress sits centred in the track.
     static let trackStroke = px(15.5)
     static let progressStroke = px(8)
     static let glyphSize = px(46)
-    /// Tight gap under ring → percent (reference look).
-    static let ringLabelGap = px(14)
-    static let percentLineHeight = px(32)
-    static let cellSpacing = px(28)
-    static let padTop = px(36)
-    static let padBottom = px(28)
+
+    static let ringLabelGap = px(12)
+    static let percentLineHeight = px(30)
+    static let cellSpacing = px(32)
+
+    /// Pill depth (horizontal). Trailing corner radius comes from depth, not height.
     static let bodyDepth = px(186)
-    static let cornerRadius = px(78.8)
-    static let bezelFillet = px(28)
+    /// Soft Codenotch trailing corners ≈ half depth (never height/2).
+    static let pillCornerRadius: CGFloat = bodyDepth * 0.48
+
+    static let padTop = px(40)
+    /// Must exceed `pillCornerRadius` — % is centered and the bottom arc reaches center-x.
+    static var padBottom: CGFloat { pillCornerRadius + percentLineHeight + px(16) }
 
     static let pillRestDepth: CGFloat = 10
-    static let hoverRevealPadding: CGFloat = 4
 
     static let cardWidth = px(560)
     static let cardPadding = px(32)
@@ -44,8 +46,13 @@ enum Design {
     static let tailHeight = px(36)
     static let tooltipGap: CGFloat = 10
 
-    /// Decorative settings arc at bottom of expanded pill (non-functional).
-    static let settingsArcSize = px(28)
+    static var cellHeight: CGFloat {
+        ringDiameter + ringLabelGap + percentLineHeight
+    }
+
+    static var expandedPillHeight: CGFloat {
+        padTop + padBottom + cellHeight * 3 + cellSpacing * 2
+    }
 }
 
 enum Palette {

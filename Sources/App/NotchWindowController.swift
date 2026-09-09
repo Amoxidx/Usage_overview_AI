@@ -173,13 +173,8 @@ final class NotchWindowController {
         } else {
             width = collapsedWidth
         }
-        let height = Design.padTop + Design.padBottom
-            + Design.ringDiameter * 3
-            + Design.ringLabelGap * 3
-            + Design.percentLineHeight * 3
-            + Design.cellSpacing * 2
-            + Design.px(16)
-            + 24
+        let height = Design.expandedPillHeight + 8
+        
         let x = visible.minX
         let y = visible.midY - height / 2
         return NSRect(x: x, y: y, width: width, height: height)
