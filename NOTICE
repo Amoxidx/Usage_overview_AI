@@ -1,0 +1,16 @@
+UsageOverview
+=============
+
+This project is an independent, minimal left-edge usage notch for Claude,
+Codex, and Grok.
+
+Portions of the adapter approach, JSON response shapes, and UI patterns were
+inspired by the MIT-licensed project:
+
+  https://github.com/vinzdg/codenotch
+  Copyright (c) 2026 Vinz
+  Licensed under the MIT License
+
+This repository is not affiliated with, endorsed by, or a fork of Codenotch.
+No Sparkle updater, session busy indicators, sounds, or notifications are
+included. Credentials are read only and never written.

@@ -1,0 +1,68 @@
+name: UsageOverview
+options:
+  bundleIdPrefix: com.usageoverview
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+  defaultLocalization: de
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGNING_ALLOWED: "YES"
+    ENABLE_HARDENED_RUNTIME: "NO"
+    ENABLE_APP_SANDBOX: "NO"
+
+targets:
+  UsageOverview:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleName: UsageOverview
+        CFBundleDisplayName: UsageOverview
+        CFBundleDevelopmentRegion: de
+        LSMinimumSystemVersion: "15.0"
+        LSUIElement: true
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.usageoverview.app
+        GENERATE_INFOPLIST_FILE: "NO"
+        PRODUCT_NAME: UsageOverview
+
+  UsageOverviewTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: UsageOverview
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.usageoverview.tests
+        GENERATE_INFOPLIST_FILE: "YES"
+
+schemes:
+  UsageOverview:
+    build:
+      targets:
+        UsageOverview: all
+        UsageOverviewTests: [test]
+    run:
+      config: Debug
+      environmentVariables:
+        USAGE_OVERVIEW_DEMO: "1"
+    test:
+      config: Debug
+      targets:
+        - UsageOverviewTests
