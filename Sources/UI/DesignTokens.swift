@@ -20,9 +20,9 @@ enum Design {
     /// Tight gap under ring → percent (reference look).
     static let ringLabelGap = px(14)
     static let percentLineHeight = px(32)
-    static let cellSpacing = px(36)
-    static let padTop = px(40)
-    static let padBottom = px(36)
+    static let cellSpacing = px(28)
+    static let padTop = px(36)
+    static let padBottom = px(28)
     static let bodyDepth = px(186)
     static let cornerRadius = px(78.8)
     static let bezelFillet = px(28)

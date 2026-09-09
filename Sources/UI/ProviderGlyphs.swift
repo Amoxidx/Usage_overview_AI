@@ -1,36 +1,51 @@
 import SwiftUI
 
-/// Vector marks traced from the Codenotch design frame.
+/// Vector marks: Anthropic spark + OpenAI knot from traced outlines; Grok = xAI-style X.
 struct ProviderGlyphView: View {
     let id: ProviderID
     var size: CGFloat = Design.glyphSize
 
-    private var outline: [[CGPoint]] {
-        switch id {
-        case .claude: return GlyphOutlines.claude
-        case .codex:  return GlyphOutlines.openai
-        case .grok:   return GlyphOutlines.cube
-        }
-    }
-
-    private var opticalScale: CGFloat {
-        switch id {
-        case .claude: return 0.97
-        case .codex:  return 0.94
-        case .grok:   return 1.0
-        }
-    }
-
     var body: some View {
-        GlyphShape(outline: outline)
-            .fill(style: FillStyle(eoFill: true))
-            .scaleEffect(opticalScale)
-            .frame(width: size, height: size)
-            .foregroundStyle(Palette.textPrimary)
+        Group {
+            switch id {
+            case .claude:
+                GlyphShape(outline: GlyphOutlines.claude)
+                    .fill(style: FillStyle(eoFill: true))
+                    .scaleEffect(0.97)
+            case .codex:
+                GlyphShape(outline: GlyphOutlines.openai)
+                    .fill(style: FillStyle(eoFill: true))
+                    .scaleEffect(0.94)
+            case .grok:
+                GrokXMark()
+            }
+        }
+        .frame(width: size, height: size)
+        .foregroundStyle(Palette.textPrimary)
     }
 }
 
-/// Traced outline scaled into the view's bounds; even-odd keeps knot/cube holes open.
+/// xAI / Grok mark: thick rounded X (not the Perplexity cube from the Codenotch screenshot).
+private struct GrokXMark: View {
+    var body: some View {
+        Canvas { context, size in
+            let inset = size.width * 0.18
+            let thickness = size.width * 0.18
+            let stroke = StrokeStyle(lineWidth: thickness, lineCap: .round, lineJoin: .round)
+
+            var a = Path()
+            a.move(to: CGPoint(x: inset, y: inset))
+            a.addLine(to: CGPoint(x: size.width - inset, y: size.height - inset))
+            context.stroke(a, with: .foreground, style: stroke)
+
+            var b = Path()
+            b.move(to: CGPoint(x: size.width - inset, y: inset))
+            b.addLine(to: CGPoint(x: inset, y: size.height - inset))
+            context.stroke(b, with: .foreground, style: stroke)
+        }
+    }
+}
+
 struct GlyphShape: Shape {
     let outline: [[CGPoint]]
 

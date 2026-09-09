@@ -28,9 +28,6 @@ struct NotchView: View {
                         let reading = store.readings[id] ?? .empty(id)
                         ProviderRingView(reading: reading, isHovered: hover.hovered == id)
                     }
-
-                    SettingsArcHint()
-                        .padding(.top, Design.px(8))
                 }
                 .padding(.top, Design.padTop)
                 .padding(.bottom, Design.padBottom)
@@ -49,7 +46,7 @@ struct NotchView: View {
                 .fill(Palette.notch)
                 .frame(width: hover.isExpanded ? Design.bodyDepth : Design.pillRestDepth,
                        height: hover.isExpanded ? nil : Design.px(210))
-                .shadow(color: Palette.shadow, radius: hover.isExpanded ? 12 : 6, x: 3, y: 0)
+                .shadow(color: Palette.shadow, radius: hover.isExpanded ? 14 : 6, x: 4, y: 0)
         }
         .overlay(alignment: .topLeading) {
             if store.isDemo && hover.isExpanded {
@@ -62,31 +59,34 @@ struct NotchView: View {
     }
 }
 
-private struct SettingsArcHint: View {
-    var body: some View {
-        Image(systemName: "gearshape.fill")
-            .font(.system(size: Design.settingsArcSize * 0.55, weight: .medium))
-            .foregroundStyle(Color.white.opacity(0.35))
-            .frame(width: Design.settingsArcSize, height: Design.settingsArcSize)
-            .background(
-                Circle()
-                    .strokeBorder(Color.white.opacity(0.18), lineWidth: 1.5)
-            )
-            .accessibilityHidden(true)
-    }
-}
-
+/// Flat against the left screen edge; trailing side is a continuous half-capsule
+/// (large vertical radius) so the open state matches the Codenotch bezel look.
 struct LeftEdgePill: Shape {
     func path(in rect: CGRect) -> Path {
-        let r = min(Design.cornerRadius, rect.width * 0.45, rect.height * 0.2)
+        // Trailing radius = half height → true stadium / capsule end.
+        let r = min(rect.width, rect.height / 2)
         var path = Path()
+        // Top-left → top before arc
         path.move(to: CGPoint(x: rect.minX, y: rect.minY))
         path.addLine(to: CGPoint(x: rect.maxX - r, y: rect.minY))
-        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY + r),
-                          control: CGPoint(x: rect.maxX, y: rect.minY))
+        // Top trailing quarter-circle into the right side
+        path.addArc(
+            center: CGPoint(x: rect.maxX - r, y: rect.minY + r),
+            radius: r,
+            startAngle: .degrees(-90),
+            endAngle: .degrees(0),
+            clockwise: false
+        )
+        // Right edge
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
-        path.addQuadCurve(to: CGPoint(x: rect.maxX - r, y: rect.maxY),
-                          control: CGPoint(x: rect.maxX, y: rect.maxY))
+        // Bottom trailing quarter-circle
+        path.addArc(
+            center: CGPoint(x: rect.maxX - r, y: rect.maxY - r),
+            radius: r,
+            startAngle: .degrees(0),
+            endAngle: .degrees(90),
+            clockwise: false
+        )
         path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
         path.closeSubpath()
         return path

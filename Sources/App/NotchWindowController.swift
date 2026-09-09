@@ -178,9 +178,8 @@ final class NotchWindowController {
             + Design.ringLabelGap * 3
             + Design.percentLineHeight * 3
             + Design.cellSpacing * 2
-            + Design.settingsArcSize
-            + Design.px(24)
-            + 40
+            + Design.px(16)
+            + 24
         let x = visible.minX
         let y = visible.midY - height / 2
         return NSRect(x: x, y: y, width: width, height: height)
