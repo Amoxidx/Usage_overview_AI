@@ -84,12 +84,18 @@ private struct LimitWindowRow: View {
 
             if let fraction = window.usedFraction {
                 GeometryReader { geo in
+                    let fill = max(NotchLayout.barHeight,
+                                   geo.size.width * CGFloat(min(max(fraction, 0), 1)))
+                    let color = band.color(accent: provider.accent, fixedAccent: provider.usesFixedAccent)
                     ZStack(alignment: .leading) {
                         Capsule().fill(Palette.barTrack)
                         Capsule()
-                            .fill(band.color(accent: provider.accent, fixedAccent: provider.usesFixedAccent))
-                            .frame(width: max(NotchLayout.barHeight,
-                                              geo.size.width * CGFloat(min(max(fraction, 0), 1))))
+                            .fill(color.opacity(0.35))
+                            .frame(width: fill)
+                            .blur(radius: 1.2)
+                        Capsule()
+                            .fill(color)
+                            .frame(width: fill)
                     }
                 }
                 .frame(width: trackWidth, height: NotchLayout.barHeight)

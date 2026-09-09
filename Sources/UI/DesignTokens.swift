@@ -33,9 +33,9 @@ enum NotchLayout {
     static let restHitHeight: CGFloat = 320
 
     static let ringDiameter   = Design.px(117)
-    static let trackStroke    = Design.px(15.5)
-    static let progressStroke = Design.px(8)
-    static let glyphSize      = Design.px(46)
+    static let trackStroke    = Design.px(16.5)
+    static let progressStroke = Design.px(9)
+    static let glyphSize      = Design.px(48)
     static let ringLabelGap   = Design.px(26.9)
 
     static let cardWidth     = Design.px(600)
@@ -75,8 +75,8 @@ enum NotchLayout {
 enum Palette {
     static let notch         = Color.black
     static let card          = Color.black
-    static let ringTrack     = Color(hex: 0x303030)
-    static let barTrack      = Color(hex: 0x2D2D2D)
+    static let ringTrack     = Color(hex: 0x3A3A3A)
+    static let barTrack      = Color(hex: 0x333333)
     static let ample         = Color(hex: 0x00FF88)
     static let watch         = Color(hex: 0xF2FF00)
     static let critical      = Color(hex: 0xFF3F00)

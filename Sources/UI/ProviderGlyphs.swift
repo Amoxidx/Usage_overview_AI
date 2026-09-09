@@ -11,19 +11,20 @@ struct ProviderGlyphView: View {
             case .claude:
                 GlyphShape(outline: GlyphOutlines.claude)
                     .fill(style: FillStyle(eoFill: true))
-                    .scaleEffect(0.97)
+                    .scaleEffect(0.98)
             case .codex:
                 GlyphShape(outline: GlyphOutlines.openai)
                     .fill(style: FillStyle(eoFill: true))
-                    .scaleEffect(0.94)
+                    .scaleEffect(0.96)
             case .grok:
                 GlyphShape(outline: GrokGlyphOutline.points)
                     .fill(style: FillStyle(eoFill: true))
-                    .scaleEffect(0.92)
+                    .scaleEffect(0.95)
             }
         }
         .frame(width: size, height: size)
-        .foregroundStyle(Palette.textPrimary)
+        .foregroundStyle(Color.white)
+        .shadow(color: .black.opacity(0.35), radius: 0.6, x: 0, y: 0.5)
     }
 }
 
