@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Dark tooltip with usage bars and reset times; caret points left toward the notch.
+/// Dark tooltip with usage bars; caret points left toward the notch (Codenotch LimitWindowRow layout).
 struct UsageTooltipView: View {
     let reading: UsageReading
 
@@ -8,24 +8,24 @@ struct UsageTooltipView: View {
         HStack(alignment: .center, spacing: 0) {
             TooltipCaret()
                 .fill(Palette.card)
-                .frame(width: Design.tailLength, height: Design.tailHeight)
+                .frame(width: NotchLayout.tailLength, height: NotchLayout.tailHeight)
 
-            VStack(alignment: .leading, spacing: Design.blockSpacing) {
+            VStack(alignment: .leading, spacing: NotchLayout.blockSpacing) {
                 header
                 if reading.windows.isEmpty {
                     Text(statusMessage)
-                        .font(.system(size: Design.fontSize(capPixels: 18)))
+                        .font(Typography.cardBody)
                         .foregroundStyle(Palette.textSecondary)
                 } else {
                     ForEach(reading.windows) { window in
-                        WindowRow(window: window, accent: reading.id.accent)
+                        LimitWindowRow(window: window, provider: reading.id)
                     }
                 }
             }
-            .padding(Design.cardPadding)
-            .frame(width: Design.cardWidth, alignment: .leading)
+            .padding(NotchLayout.cardPadding)
+            .frame(width: NotchLayout.cardWidth, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: Design.cardCorner, style: .continuous)
+                RoundedRectangle(cornerRadius: NotchLayout.cardCorner, style: .circular)
                     .fill(Palette.card)
                     .shadow(color: Palette.shadow, radius: 22, x: 6, y: 8)
             )
@@ -34,19 +34,19 @@ struct UsageTooltipView: View {
     }
 
     private var header: some View {
-        HStack(spacing: Design.headerGap) {
+        HStack(spacing: NotchLayout.headerGap) {
             ProviderGlyphView(id: reading.id, size: Design.px(28))
             Text(DE.usageTitle(reading.id.displayName))
-                .font(.system(size: Design.fontSize(capPixels: 26), weight: .semibold))
+                .font(Typography.cardTitle)
                 .foregroundStyle(Palette.textPrimary)
             Spacer(minLength: 0)
             if case .stale = reading.status {
                 Text(DE.stale)
-                    .font(.system(size: Design.fontSize(capPixels: 16)))
+                    .font(Typography.cardBody)
                     .foregroundStyle(Palette.textSecondary)
             }
         }
-        .padding(.bottom, Design.headerToBlock - Design.blockSpacing)
+        .padding(.bottom, NotchLayout.headerToBlock - NotchLayout.blockSpacing)
     }
 
     private var statusMessage: String {
@@ -60,55 +60,50 @@ struct UsageTooltipView: View {
     }
 }
 
-private struct WindowRow: View {
+/// Label | reset on one line, bar, then "% genutzt" — matches Codenotch LimitWindowRow.
+private struct LimitWindowRow: View {
     let window: UsageWindow
-    let accent: Color
+    let provider: ProviderID
+
+    private var band: UsageBand { UsageBand.band(for: window.usedFraction ?? 0) }
+    private var trackWidth: CGFloat { NotchLayout.cardWidth - 2 * NotchLayout.cardPadding }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Design.labelToBar) {
-            HStack(alignment: .firstTextBaseline) {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: Design.px(20)) {
                 Text(window.label)
-                    .font(.system(size: Design.fontSize(capPixels: 18), weight: .medium))
                     .foregroundStyle(Palette.textPrimary)
-                Spacer()
+                Spacer(minLength: 0)
                 if let resets = window.resetsAt {
                     Text(DE.resetCopy(for: resets))
-                        .font(.system(size: Design.fontSize(capPixels: 16)))
                         .foregroundStyle(Palette.textSecondary)
                 }
             }
+            .font(Typography.cardBody)
+            .lineLimit(1)
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Palette.barTrack)
-                    if let fraction = window.usedFraction {
+            if let fraction = window.usedFraction {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Palette.barTrack)
                         Capsule()
-                            .fill(accent)
-                            .frame(width: max(Design.barHeight,
+                            .fill(band.color(accent: provider.accent, fixedAccent: provider.usesFixedAccent))
+                            .frame(width: max(NotchLayout.barHeight,
                                               geo.size.width * CGFloat(min(max(fraction, 0), 1))))
-                            .animation(.easeInOut(duration: 0.35), value: fraction)
                     }
                 }
+                .frame(width: trackWidth, height: NotchLayout.barHeight)
+                .padding(.top, NotchLayout.labelToBar)
+
+                Text(PercentFormat.usedLabel(for: fraction))
+                    .font(Typography.cardBody)
+                    .foregroundStyle(Palette.textPrimary)
+                    .padding(.top, NotchLayout.barToUsed)
             }
-            .frame(height: Design.barHeight)
-
-            Text(summary)
-                .font(.system(size: Design.fontSize(capPixels: 18)))
-                .foregroundStyle(Palette.textPrimary.opacity(0.92))
-                .padding(.top, Design.barToUsed - Design.labelToBar)
         }
-    }
-
-    private var summary: String {
-        if let fraction = window.usedFraction {
-            return PercentFormat.usedLabel(for: fraction)
-        }
-        return DE.noReading
     }
 }
 
-/// Triangular caret pointing left (toward the left-edge notch).
 private struct TooltipCaret: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()

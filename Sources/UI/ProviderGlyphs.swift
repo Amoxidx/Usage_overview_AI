@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Vector marks: Anthropic spark + OpenAI knot from traced outlines; Grok = xAI-style X.
+/// Vector marks: Anthropic spark, OpenAI knot, Grok favicon swirl.
 struct ProviderGlyphView: View {
     let id: ProviderID
-    var size: CGFloat = Design.glyphSize
+    var size: CGFloat = NotchLayout.glyphSize
 
     var body: some View {
         Group {
@@ -17,32 +17,13 @@ struct ProviderGlyphView: View {
                     .fill(style: FillStyle(eoFill: true))
                     .scaleEffect(0.94)
             case .grok:
-                GrokXMark()
+                GlyphShape(outline: GrokGlyphOutline.points)
+                    .fill(style: FillStyle(eoFill: true))
+                    .scaleEffect(0.92)
             }
         }
         .frame(width: size, height: size)
         .foregroundStyle(Palette.textPrimary)
-    }
-}
-
-/// xAI / Grok mark: thick rounded X (not the Perplexity cube from the Codenotch screenshot).
-private struct GrokXMark: View {
-    var body: some View {
-        Canvas { context, size in
-            let inset = size.width * 0.18
-            let thickness = size.width * 0.18
-            let stroke = StrokeStyle(lineWidth: thickness, lineCap: .round, lineJoin: .round)
-
-            var a = Path()
-            a.move(to: CGPoint(x: inset, y: inset))
-            a.addLine(to: CGPoint(x: size.width - inset, y: size.height - inset))
-            context.stroke(a, with: .foreground, style: stroke)
-
-            var b = Path()
-            b.move(to: CGPoint(x: size.width - inset, y: inset))
-            b.addLine(to: CGPoint(x: inset, y: size.height - inset))
-            context.stroke(b, with: .foreground, style: stroke)
-        }
     }
 }
 

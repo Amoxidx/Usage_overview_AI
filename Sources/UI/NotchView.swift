@@ -1,23 +1,32 @@
 import SwiftUI
 
-/// Left-edge black pill. Expand/collapse is driven by `HoverSession` (AppKit mouse tracking).
+/// Left-edge black flared notch. Expand/collapse driven by `HoverSession`.
 struct NotchView: View {
     @ObservedObject var store: UsageStore
     @ObservedObject var hover: HoverSession
 
     var body: some View {
-        HStack(alignment: .center, spacing: Design.tooltipGap) {
+        HStack(alignment: .top, spacing: NotchLayout.tailGap) {
             pill
 
             if hover.isExpanded, let id = hover.hovered, let reading = store.readings[id] {
                 UsageTooltipView(reading: reading)
+                    .padding(.top, tooltipTopPadding(for: id))
                     .transition(.opacity.combined(with: .move(edge: .leading)))
             }
         }
         .animation(.easeInOut(duration: 0.18), value: hover.hovered)
         .animation(.easeInOut(duration: 0.18), value: hover.isExpanded)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(.leading, 0)
+    }
+
+    private func tooltipTopPadding(for id: ProviderID) -> CGFloat {
+        let index = CGFloat(ProviderID.allCases.firstIndex(of: id) ?? 0)
+        let ringCenterY = NotchLayout.curlRadius + NotchLayout.padTop
+            + NotchLayout.ringDiameter / 2
+            + index * (NotchLayout.cellExtent + NotchLayout.cellSpacing)
+        let approxHalf: CGFloat = Design.px(210)
+        return max(0, ringCenterY - approxHalf)
     }
 
     private var pill: some View {
@@ -31,73 +40,47 @@ struct NotchView: View {
     }
 
     private var collapsedHandle: some View {
-        Color.clear
-            .frame(width: Design.pillRestDepth + 4, height: Design.px(210))
-            .background(alignment: .leading) {
-                LeftEdgePill()
-                    .fill(Palette.notch)
-                    .frame(width: Design.pillRestDepth, height: Design.px(210))
-                    .shadow(color: Palette.shadow, radius: 6, x: 3, y: 0)
-            }
+        // Half a pill split down the middle: flat on the left bezel, round on the right.
+        ZStack(alignment: .leading) {
+            Color.clear
+            LeftHalfStadium()
+                .fill(Palette.notch)
+                .frame(width: NotchLayout.pillWidth, height: NotchLayout.pillHeight)
+                .shadow(color: Palette.shadow, radius: 8, x: 3, y: 0)
+                .offset(x: 0) // flush — flat edge sits on screen.frame.minX
+        }
+        .frame(width: max(NotchLayout.pillWidth + 8, NotchLayout.pillHotZone),
+               height: NotchLayout.restHitHeight,
+               alignment: .leading)
     }
 
     private var expandedPill: some View {
-        VStack(spacing: Design.cellSpacing) {
+        VStack(spacing: NotchLayout.cellSpacing) {
             ForEach(ProviderID.allCases) { id in
                 let reading = store.readings[id] ?? .empty(id)
                 ProviderRingView(reading: reading, isHovered: hover.hovered == id)
-                    .frame(width: Design.ringDiameter)
             }
         }
-        .padding(.top, Design.padTop)
-        .padding(.bottom, Design.padBottom)
-        .padding(.horizontal, (Design.bodyDepth - Design.ringDiameter) / 2)
-        .frame(width: Design.bodyDepth)
+        .padding(.top, NotchLayout.curlRadius + NotchLayout.padTop)
+        .padding(.bottom, NotchLayout.curlRadius + NotchLayout.padBottom)
+        .padding(.horizontal, NotchLayout.ringMargin)
+        .frame(width: NotchLayout.bodyDepth)
         .background {
-            LeftEdgePill()
+            SideNotchShape()
                 .fill(Palette.notch)
                 .shadow(color: Palette.shadow, radius: 14, x: 4, y: 0)
         }
-        // Keep glyphs/% inside the bezel — critical for the bottom (Grok) label.
-        .clipShape(LeftEdgePill())
+        .clipShape(SideNotchShape())
+        .offset(x: 0)
         .overlay(alignment: .topLeading) {
-            if store.isDemo {
+            if store.isDemo && hover.isExpanded && !HoverSession.forceExpanded {
                 Text(DE.demoBadge)
                     .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(.white.opacity(0.45))
                     .padding(8)
             }
         }
         .fixedSize(horizontal: true, vertical: true)
         .transition(.opacity)
-    }
-}
-
-/// Flat on the screen edge; trailing corners use a **depth-based** radius (Codenotch),
-/// never `height/2` — a full capsule eats the bottom percent label.
-struct LeftEdgePill: Shape {
-    func path(in rect: CGRect) -> Path {
-        let r = min(Design.pillCornerRadius, rect.width * 0.92, rect.height * 0.22)
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX - r, y: rect.minY))
-        path.addArc(
-            center: CGPoint(x: rect.maxX - r, y: rect.minY + r),
-            radius: r,
-            startAngle: .degrees(-90),
-            endAngle: .degrees(0),
-            clockwise: false
-        )
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
-        path.addArc(
-            center: CGPoint(x: rect.maxX - r, y: rect.maxY - r),
-            radius: r,
-            startAngle: .degrees(0),
-            endAngle: .degrees(90),
-            clockwise: false
-        )
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.closeSubpath()
-        return path
     }
 }
