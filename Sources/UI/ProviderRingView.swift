@@ -1,28 +1,27 @@
 import SwiftUI
 
-/// Circular progress ring with provider glyph and percent underneath.
+/// Circular progress ring with provider glyph and percent underneath (Codenotch ProviderRing).
 struct ProviderRingView: View {
     let reading: UsageReading
     var isHovered: Bool = false
 
     private var fraction: Double? { reading.usedFraction }
     private var sweep: CGFloat { CGFloat(min(max(fraction ?? 0, 0), 1)) }
+    private var band: UsageBand { UsageBand.band(for: fraction ?? 0) }
 
     var body: some View {
-        VStack(spacing: Design.ringLabelGap) {
+        VStack(spacing: NotchLayout.ringLabelGap) {
             ZStack {
-                // Thick dark track
                 Circle()
-                    .strokeBorder(Palette.ringTrack, lineWidth: Design.trackStroke)
+                    .strokeBorder(Palette.ringTrack, lineWidth: NotchLayout.trackStroke)
 
-                // Thinner bright progress stroke centred in the track
                 if fraction != nil {
                     Circle()
-                        .inset(by: Design.trackStroke / 2)
+                        .inset(by: NotchLayout.trackStroke / 2)
                         .trim(from: 0, to: sweep)
                         .stroke(
-                            reading.id.accent,
-                            style: StrokeStyle(lineWidth: Design.progressStroke, lineCap: .round)
+                            band.color(accent: reading.id.accent, fixedAccent: reading.id.usesFixedAccent),
+                            style: StrokeStyle(lineWidth: NotchLayout.progressStroke, lineCap: .round)
                         )
                         .rotationEffect(.degrees(-90))
                         .animation(.easeInOut(duration: 0.45), value: sweep)
@@ -31,18 +30,19 @@ struct ProviderRingView: View {
                 ProviderGlyphView(id: reading.id)
                     .opacity(opacityForStatus)
             }
-            .frame(width: Design.ringDiameter, height: Design.ringDiameter)
+            .frame(width: NotchLayout.ringDiameter, height: NotchLayout.ringDiameter)
             .drawingGroup()
             .scaleEffect(isHovered ? 1.03 : 1)
             .animation(.easeInOut(duration: 0.2), value: isHovered)
 
             Text(percentLabel)
-                .font(.system(size: Design.fontSize(capPixels: 27), weight: .medium, design: .rounded))
+                .font(Typography.percent)
                 .foregroundStyle(Palette.textPrimary)
                 .monospacedDigit()
-                .frame(height: Design.percentLineHeight)
+                .frame(height: NotchLayout.percentLineHeight)
                 .opacity(opacityForStatus)
         }
+        .frame(height: NotchLayout.cellExtent)
     }
 
     private var percentLabel: String {
@@ -50,10 +50,8 @@ struct ProviderRingView: View {
             return "\(PercentFormat.text(for: fraction))%"
         }
         switch reading.status {
-        case .needsAuth: return "—"
-        case .nothingMetered: return "—"
+        case .needsAuth, .nothingMetered, .stale, .ok: return "—"
         case .error: return "!"
-        case .stale, .ok: return "—"
         }
     }
 

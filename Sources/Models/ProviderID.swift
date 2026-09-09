@@ -22,8 +22,12 @@ enum ProviderID: String, CaseIterable, Identifiable, Codable, Sendable {
     var accent: Color {
         switch self {
         case .claude: return Color(hex: 0xFF5A2A) // Claude orange
-        case .codex:  return Color(hex: 0x22C55E) // Codex green
+        case .codex:  return Color(hex: 0x5AC8FA) // Codex light blue
         case .grok:   return Color(hex: 0xF5C518) // Grok yellow
         }
     }
+
+    /// Codex stays blue even at high usage (no critical red).
+    var usesFixedAccent: Bool { self == .codex }
 }
+

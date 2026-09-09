@@ -3,7 +3,7 @@ import SwiftUI
 import Combine
 
 /// Hosts the SwiftUI notch in a left-edge NSPanel.
-/// Expand/collapse uses a global mouse monitor so it always dismisses when the cursor leaves.
+/// Expand/collapse uses a timer mouse poll (works without Accessibility).
 @MainActor
 final class NotchWindowController {
     private var panel: NotchPanel?
@@ -14,11 +14,13 @@ final class NotchWindowController {
     private var hoverCancellable: AnyCancellable?
     private var collapseWork: DispatchWorkItem?
     private var pollTimer: Timer?
+    private var forceExpandedLocked = false
 
-    /// Collapsed strip width (points).
-    private let collapsedWidth: CGFloat = 16
-    /// Extra padding around hit-test when expanded.
-    private let leaveSlop: CGFloat = 8
+    /// Visible resting strip width.
+    private var collapsedVisualWidth: CGFloat { NotchLayout.pillWidth + 8 }
+    /// Panel / hit width when collapsed — wider than the drawn pill so hover is easy.
+    private var collapsedHitWidth: CGFloat { max(collapsedVisualWidth, NotchLayout.pillHotZone) }
+    private let leaveSlop: CGFloat = 16
 
     init(store: UsageStore) {
         self.store = store
@@ -35,6 +37,15 @@ final class NotchWindowController {
         panel.setFrame(frame, display: true)
         panel.orderFrontRegardless()
         self.panel = panel
+
+        if HoverSession.forceExpanded {
+            forceExpandedLocked = true
+            hover.expand(hovering: .claude)
+            applyFrame(expanded: true)
+            NSLog("UsageOverview FORCE_EXPANDED locked; frame=%@", NSStringFromRect(panel.frame))
+        } else {
+            NSLog("UsageOverview rest hit frame=%@", NSStringFromRect(panel.frame))
+        }
 
         hoverCancellable = hover.$isExpanded
             .removeDuplicates()
@@ -65,16 +76,14 @@ final class NotchWindowController {
     }
 
     private func installMouseMonitor() {
-        // Timer polling works without Accessibility permission (unlike global monitors).
         pollTimer?.invalidate()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.handleMouseMoved() }
         }
         if let pollTimer {
             RunLoop.main.add(pollTimer, forMode: .common)
         }
 
-        // Best-effort global monitor (needs Accessibility); fine if it fails/nil.
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] _ in
             Task { @MainActor in self?.handleMouseMoved() }
         }
@@ -86,42 +95,52 @@ final class NotchWindowController {
 
     private func handleMouseMoved() {
         guard let panel else { return }
-        let mouse = NSEvent.mouseLocation // bottom-left origin, global
+        if forceExpandedLocked { return }
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
 
         if hover.isExpanded {
-            // Stay open while inside the panel (plus slop). Collapse shortly after leaving.
             let rect = panel.frame.insetBy(dx: -leaveSlop, dy: -leaveSlop)
-            if rect.contains(mouse) {
+            // Also keep open while near the left edge hot band (so collapsing then re-entering is easy).
+            let edgeHot = leftEdgeHotZone(on: screen, around: panel.frame)
+            if rect.contains(mouse) || edgeHot.contains(mouse) {
                 collapseWork?.cancel()
                 collapseWork = nil
-                updateHoveredProvider(at: mouse, in: panel)
+                if rect.contains(mouse) {
+                    updateHoveredProvider(at: mouse, in: panel)
+                }
             } else {
                 scheduleCollapse()
             }
         } else {
-            // Open when cursor enters the thin left-edge hot zone overlapping the panel's Y range.
-            let hot = CGRect(
-                x: panel.frame.minX,
-                y: panel.frame.minY,
-                width: collapsedWidth + 14,
-                height: panel.frame.height
-            )
+            let hot = leftEdgeHotZone(on: screen, around: panel.frame)
             if hot.contains(mouse) {
                 collapseWork?.cancel()
                 collapseWork = nil
-                withAnimationIfNeeded {
-                    hover.expand(hovering: .claude) // default until refined
-                }
+                hover.expand(hovering: .claude)
                 updateHoveredProvider(at: mouse, in: panel)
             }
         }
     }
 
+    /// Generous left-edge band covering the resting panel's Y range (plus slack).
+    private func leftEdgeHotZone(on screen: NSScreen?, around panelFrame: NSRect) -> CGRect {
+        let visible = screen?.visibleFrame ?? panelFrame
+        let y = panelFrame.minY - 40
+        let h = panelFrame.height + 80
+        return CGRect(
+            x: visible.minX,
+            y: y,
+            width: collapsedHitWidth,
+            height: h
+        )
+    }
+
     private func updateHoveredProvider(at mouse: CGPoint, in panel: NSPanel) {
-        // Map mouse Y into the three ring bands (top → bottom: claude, codex, grok).
         let localY = mouse.y - panel.frame.minY
         let h = panel.frame.height
-        // SwiftUI is top-down; AppKit Y is bottom-up.
         let fromTop = h - localY
         let providers = ProviderID.allCases
         let band = h / CGFloat(providers.count)
@@ -134,24 +153,27 @@ final class NotchWindowController {
     }
 
     private func scheduleCollapse() {
+        guard !HoverSession.forceExpanded else { return }
         guard collapseWork == nil else { return }
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            // Re-check: only collapse if still outside.
             if let panel = self.panel {
                 let mouse = NSEvent.mouseLocation
+                let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
+                    ?? NSScreen.main
                 let rect = panel.frame.insetBy(dx: -self.leaveSlop, dy: -self.leaveSlop)
-                if rect.contains(mouse) { return }
+                let edge = self.leftEdgeHotZone(on: screen, around: panel.frame)
+                if rect.contains(mouse) || edge.contains(mouse) {
+                    self.collapseWork = nil
+                    return
+                }
             }
             self.hover.collapse()
             self.collapseWork = nil
         }
         collapseWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
-    }
-
-    private func withAnimationIfNeeded(_ body: () -> Void) {
-        body()
+        // Slightly longer so leaving the strip doesn't instantly lose the target.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22, execute: work)
     }
 
     private func applyFrame(expanded: Bool) {
@@ -163,24 +185,23 @@ final class NotchWindowController {
         if let hosting = panel.contentView as? NSHostingView<NotchView> {
             hosting.rootView = NotchView(store: store, hover: hover)
         }
+        panel.orderFrontRegardless()
     }
 
     private func panelFrame(on screen: NSScreen?, expanded: Bool) -> NSRect {
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        // Physical left edge of the display (flush) — visibleFrame.minX can sit inset.
+        let screenFrame = screen?.frame ?? visible
         let width: CGFloat
+        let height: CGFloat
         if expanded {
-            width = Design.bodyDepth + Design.cardWidth + Design.tailLength + Design.tooltipGap + 40
+            width = NotchLayout.bodyDepth + NotchLayout.cardWidth + NotchLayout.tailLength + NotchLayout.tailGap + 40
+            height = NotchLayout.shapeLength + 8
         } else {
-            width = collapsedWidth
+            width = collapsedHitWidth
+            height = NotchLayout.restHitHeight
         }
-        let height = Design.padTop + Design.padBottom
-            + Design.ringDiameter * 3
-            + Design.ringLabelGap * 3
-            + Design.percentLineHeight * 3
-            + Design.cellSpacing * 2
-            + Design.px(16)
-            + 24
-        let x = visible.minX
+        let x = screenFrame.minX
         let y = visible.midY - height / 2
         return NSRect(x: x, y: y, width: width, height: height)
     }

@@ -1,61 +1,88 @@
+import AppKit
 import SwiftUI
 
-/// Layout and colour tokens tuned to the Codenotch design frame.
+/// Proportional scale from Codenotch design frame (44pt ring = 117px).
 enum Design {
-    /// Points per design-frame pixel (44pt ring / 117px).
     static let scale: CGFloat = 44.0 / 117.0
     static func px(_ pixels: CGFloat) -> CGFloat { pixels * scale }
 
-    /// Cap-height → point size for SF Pro (matches Codenotch Typography).
     private static let capRatio: CGFloat = 0.714
     static func fontSize(capPixels pixels: CGFloat) -> CGFloat {
         px(pixels) / capRatio
     }
+}
 
-    static let ringDiameter = px(117)
-    /// Thick dark track; thinner bright progress sits centred in the track.
-    static let trackStroke = px(15.5)
-    static let progressStroke = px(8)
-    static let glyphSize = px(46)
-    /// Tight gap under ring → percent (reference look).
-    static let ringLabelGap = px(14)
-    static let percentLineHeight = px(32)
-    static let cellSpacing = px(28)
-    static let padTop = px(36)
-    static let padBottom = px(28)
-    static let bodyDepth = px(186)
-    static let cornerRadius = px(78.8)
-    static let bezelFillet = px(28)
+/// Layout tokens copied from Codenotch `NotchLayout` (left-edge, three providers).
+enum NotchLayout {
+    static let sideBodyDepth = Design.px(186)
+    static var bodyDepth: CGFloat { sideBodyDepth }
 
-    static let pillRestDepth: CGFloat = 10
-    static let hoverRevealPadding: CGFloat = 4
+    static let curlRadius   = Design.px(103)
+    static let bezelFillet  = Design.px(28)
+    static let cornerRadius = Design.px(78.8)
+    static let padTop       = Design.px(69.5)
+    static let padBottom    = Design.px(50.1)
+    static let cellSpacing  = Design.px(83.5)
 
-    static let cardWidth = px(560)
-    static let cardPadding = px(32)
-    static let cardCorner = px(40)
-    static let barHeight = px(12)
-    static let barCorner = px(6)
-    static let headerGap = px(14)
-    static let headerToBlock = px(20)
-    static let labelToBar = px(12)
-    static let barToUsed = px(10)
-    static let blockSpacing = px(18)
-    static let tailLength = px(22)
-    static let tailHeight = px(36)
-    static let tooltipGap: CGFloat = 10
+    /// Resting handle — slightly wider than Codenotch px(26) so it stays visible on dark wallpapers.
+    static let pillWidth  = Design.px(30)  // half of prior; left-half stadium
+    static let pillHeight = Design.px(158) // half of prior
+    /// Invisible hit band around the resting pill (Codenotch-style generous edge).
+    static let pillHotZone = Design.px(90)  // hover still wider than visual
+    /// Tall transparent panel so you can find the strip without pixel-hunting.
+    static let restHitHeight: CGFloat = 320
 
-    /// Decorative settings arc at bottom of expanded pill (non-functional).
-    static let settingsArcSize = px(28)
+    static let ringDiameter   = Design.px(117)
+    static let trackStroke    = Design.px(15.5)
+    static let progressStroke = Design.px(8)
+    static let glyphSize      = Design.px(46)
+    static let ringLabelGap   = Design.px(26.9)
+
+    static let cardWidth     = Design.px(600)
+    static let cardCorner    = Design.px(49.5)
+    static let cardPadding   = Design.px(32)
+    static let tailLength    = Design.px(75)
+    static let tailHeight    = Design.px(87)
+    static let tailGap       = Design.px(28)
+    static let barHeight     = Design.px(10.5)
+    static let headerGap     = Design.px(17)
+    static let headerToBlock = Design.px(21)
+    static let labelToBar    = Design.px(16.8)
+    static let barToUsed     = Design.px(17.8)
+    static let blockSpacing  = Design.px(20)
+    static let sessionRowGap = Design.px(10)
+
+    static let percentLineHeight: CGFloat = {
+        let font = NSFont.systemFont(ofSize: Design.fontSize(capPixels: 27), weight: .semibold)
+        return ceil(font.ascender - font.descender + font.leading)
+    }()
+
+    static var cellExtent: CGFloat { ringDiameter + ringLabelGap + percentLineHeight }
+
+    /// Body length for 3 provider cells (no flares).
+    static var bodyLength: CGFloat {
+        padTop + padBottom + 3 * cellExtent + 2 * cellSpacing
+    }
+
+    /// Full shape length including top/bottom flares.
+    static var shapeLength: CGFloat {
+        bodyLength + 2 * curlRadius
+    }
+
+    static var ringMargin: CGFloat { (sideBodyDepth - ringDiameter) / 2 }
 }
 
 enum Palette {
-    static let notch = Color.black
-    static let card = Color(hex: 0x121212).opacity(0.96)
-    static let ringTrack = Color(hex: 0x303030)
-    static let barTrack = Color(hex: 0x2D2D2D)
-    static let textPrimary = Color.white
+    static let notch         = Color.black
+    static let card          = Color.black
+    static let ringTrack     = Color(hex: 0x303030)
+    static let barTrack      = Color(hex: 0x2D2D2D)
+    static let ample         = Color(hex: 0x00FF88)
+    static let watch         = Color(hex: 0xF2FF00)
+    static let critical      = Color(hex: 0xFF3F00)
+    static let textPrimary   = Color.white
     static let textSecondary = Color(hex: 0x808080)
-    static let shadow = Color.black.opacity(0.5)
+    static let shadow        = Color.black.opacity(0.45)
 }
 
 extension Color {
