@@ -60,3 +60,21 @@ struct SideNotchShape: Shape {
         return path
     }
 }
+
+/// Single path from the resting half-stadium (`progress` 0) to the flared notch (`progress` 1).
+/// Frame size is animated separately; this interpolates curl / corner so the silhouette morphs.
+struct MorphingNotch: Shape {
+    var progress: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = min(max(newValue, 0), 1) }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let curl = NotchLayout.curlRadius * progress
+        let pillCorner = min(rect.width, rect.height / 2)
+        let corner = pillCorner + (NotchLayout.cornerRadius - pillCorner) * progress
+        return SideNotchShape(curlRadius: curl, cornerRadius: corner).path(in: rect)
+    }
+}

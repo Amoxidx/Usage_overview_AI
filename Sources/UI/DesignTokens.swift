@@ -70,6 +70,45 @@ enum NotchLayout {
     }
 
     static var ringMargin: CGFloat { (sideBodyDepth - ringDiameter) / 2 }
+
+    /// Resting handle hit width (visual pill plus slack).
+    static var collapsedHitWidth: CGFloat { max(pillWidth + 8, pillHotZone) }
+
+    /// Panel stays at expanded size so the shape can morph without a window jump.
+    static var panelWidth: CGFloat { bodyDepth + cardWidth + tailLength + tailGap + 40 }
+    static var panelHeight: CGFloat { shapeLength + 8 }
+}
+
+/// Appear / dismiss springs. Smooth (no bounce) reads cleaner than a snappy overshoot.
+enum Motion {
+    static var prefersReduced: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    /// Notch growing out of the left-edge pill.
+    static var expand: Animation {
+        prefersReduced ? .easeOut(duration: 0.01) : .smooth(duration: 0.38)
+    }
+
+    /// Notch collapsing back into the pill — same curve, shorter so dismiss feels decisive.
+    static var collapse: Animation {
+        prefersReduced ? .easeOut(duration: 0.01) : .smooth(duration: 0.26)
+    }
+
+    /// Tooltip following the hovered ring.
+    static var hover: Animation {
+        prefersReduced ? .easeOut(duration: 0.01) : .smooth(duration: 0.22)
+    }
+
+    /// Rings fading in after the chrome has started to open.
+    static var content: Animation {
+        prefersReduced ? .easeOut(duration: 0.01) : .smooth(duration: 0.30)
+    }
+
+    static func contentDelay(for index: Int, expanding: Bool) -> Double {
+        guard expanding, !prefersReduced else { return 0 }
+        return Double(index) * 0.045
+    }
 }
 
 enum Palette {
