@@ -1,54 +1,73 @@
 # UsageOverview
 
-Schlanke **macOS**-App: eine schwarze **Usage-Notch** am **linken Bildschirmrand** für **Claude**, **Codex** und **Grok**.
+Schlanke **eigene** macOS-App (nicht Codenotch): schwarze **Usage-Notch** am **linken** Bildschirmrand für **Claude**, **Codex** und **Grok**.
 
-Im Ruhezustand nur ein dünner Streifen. Beim Hover: drei Ringe mit Prozent + Tooltip (Nutzungsbalken und Reset-Zeiten), optisch an Codenotch angelehnt — aber **eigenständiger, minimaler Code** (MIT, siehe `NOTICE`).
+![Referenz-Notch (korrekt)](docs/images/usageoverview-notch-reference.png)
 
 | | |
 |---|---|
-| Platform | macOS 15+ (Apple Silicon / Universal via Xcode) |
-| Stack | Swift 5 / SwiftUI + AppKit `NSPanel` |
-| Providers | Claude Code · Codex · Grok CLI only |
-| UI language | Deutsch |
+| Platform | macOS 15+ (Xcode 16+/26+) |
+| Stack | Swift / SwiftUI + AppKit `NSPanel` |
+| Providers | Claude Code · Codex · Grok CLI |
+| UI | Deutsch |
 | License | MIT |
+| Reference commit | \`cd703d9\` on \`main\` |
+
+> **Wichtig:** Das ist **nicht** [vinzdg/codenotch](https://github.com/vinzdg/codenotch). Wenn du Codenotch klonst/installierst, sieht die Grafik anders aus (rechts, mehr Provider, anderes Logo).
+
+## So muss es aussehen
+- **Links** am Bildschirmrand (nicht rechts)
+- Ruhe: dünner schwarzer Strip, **flach links / rund rechts**
+- Hover: drei Ringe — Claude (Wochenlimit), Codex (**hellblau**), Grok (**Favicon-Swirl**, kein X)
+- Tooltip auf Deutsch mit Balken + Reset
+
+Wenn das nicht passt, bist du auf dem falschen Repo/Branch oder einem alten Stand.
+
+## Install (anderer Mac) — genau dieser Stand
+
+```bash
+# 1) Nur DIESES Repo, Branch main
+git clone https://github.com/Amoxidx/Usage_overview_AI.git
+cd Usage_overview_AI
+git checkout main
+git pull
+git rev-parse --short HEAD   # sollte >= cd703d9 sein
+
+# 2) Xcode-Toolchain (nicht nur CLT)
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+brew install xcodegen
+
+# 3) Bauen + starten
+make run
+# oder dauerhaft über LaunchServices:
+./launch-usageoverview.sh
+```
+
+Die App erscheint **ohne Dock-Icon** (Menüleiste: halbgefüllter Kreis). Linken Rand mittlere Höhe anfahren.
+
+### Demo / QA
+```bash
+make demo          # Beispieldaten
+make qa            # Demo + expandiert (für Screenshots)
+```
 
 ## Features
-- Links andocken, **Hover-Expand**, zuverlässiges Zuklappen (Maus-Polling)
-- **Claude-Ring = Wochenlimit (all models)**; Sitzung im Tooltip
-- Codex 5h/weekly windows; Grok Build credits
-- Demo-Modus ohne Auth: `USAGE_OVERVIEW_DEMO=1`
+- Hover-Expand / Zuklappen (Maus-Polling)
+- **Claude-Ring = Wochenlimit**; Sitzung nur im Tooltip
+- Codex hellblau; Grok = grok.com-Favicon
 - Keine Session-Busy-UI, keine Sounds, kein Sparkle
-
-## Build & Run
-```bash
-brew install xcodegen
-cd UsageOverview
-make run     # live
-make demo    # sample %
-make test
-```
-
-Xcode 16+ / 26+ empfohlen. Wenn `xcodebuild` auf Command Line Tools zeigt:
-```bash
-export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-```
 
 ## Live data
 | Provider | Source |
 |----------|--------|
 | Claude | `claude /usage` |
 | Codex | `~/.codex/auth.json` → ChatGPT usage API |
-| Grok | `~/.grok/auth.json` → Grok billing credits |
+| Grok | `~/.grok/auth.json` → billing credits |
 
-Credentials are **read-only**. Expired Grok → `grok login` in a real Terminal.
+Credentials **read-only**. Abgelaufenes Grok → `grok login` im Terminal.
 
 ## Agent notes
-See **[AGENTS.md](./AGENTS.md)** for architecture, non-goals, and safe edit guidelines (written for coding agents).
-
-## Security
-- No sandbox (needs home-dir auth + CLI)
-- No telemetry SDK
-- Failures surface as stale/error — never fake percentages
+Siehe [AGENTS.md](./AGENTS.md) und [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 
 ## Credit
-Design/adapter ideas inspired by [vinzdg/codenotch](https://github.com/vinzdg/codenotch) (MIT © 2026 Vinz). This repo is not a fork.
+Design-Ideen angelehnt an [vinzdg/codenotch](https://github.com/vinzdg/codenotch) (MIT). **Kein Fork** — eigener Code.
