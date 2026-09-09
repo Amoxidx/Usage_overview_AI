@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Circular progress ring with provider glyph and percent underneath (Codenotch ProviderRing).
+/// Circular progress ring with provider glyph and percent underneath.
 struct ProviderRingView: View {
     let reading: UsageReading
     var isHovered: Bool = false
@@ -8,19 +8,38 @@ struct ProviderRingView: View {
     private var fraction: Double? { reading.usedFraction }
     private var sweep: CGFloat { CGFloat(min(max(fraction ?? 0, 0), 1)) }
     private var band: UsageBand { UsageBand.band(for: fraction ?? 0) }
+    private var progressColor: Color {
+        band.color(accent: reading.id.accent, fixedAccent: reading.id.usesFixedAccent)
+    }
 
     var body: some View {
         VStack(spacing: NotchLayout.ringLabelGap) {
             ZStack {
+                // Soft outer halo so rings read against the black pill.
+                Circle()
+                    .stroke(Palette.ringTrack.opacity(0.55), lineWidth: NotchLayout.trackStroke + 2)
+                    .blur(radius: 0.4)
+
                 Circle()
                     .strokeBorder(Palette.ringTrack, lineWidth: NotchLayout.trackStroke)
 
                 if fraction != nil {
+                    // Glow pass
                     Circle()
                         .inset(by: NotchLayout.trackStroke / 2)
                         .trim(from: 0, to: sweep)
                         .stroke(
-                            band.color(accent: reading.id.accent, fixedAccent: reading.id.usesFixedAccent),
+                            progressColor.opacity(0.45),
+                            style: StrokeStyle(lineWidth: NotchLayout.progressStroke + 2.5, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+                        .blur(radius: 1.6)
+
+                    Circle()
+                        .inset(by: NotchLayout.trackStroke / 2)
+                        .trim(from: 0, to: sweep)
+                        .stroke(
+                            progressColor,
                             style: StrokeStyle(lineWidth: NotchLayout.progressStroke, lineCap: .round)
                         )
                         .rotationEffect(.degrees(-90))
@@ -31,14 +50,15 @@ struct ProviderRingView: View {
                     .opacity(opacityForStatus)
             }
             .frame(width: NotchLayout.ringDiameter, height: NotchLayout.ringDiameter)
-            .drawingGroup()
-            .scaleEffect(isHovered ? 1.03 : 1)
+            .compositingGroup()
+            .scaleEffect(isHovered ? 1.04 : 1)
             .animation(.easeInOut(duration: 0.2), value: isHovered)
 
             Text(percentLabel)
                 .font(Typography.percent)
                 .foregroundStyle(Palette.textPrimary)
                 .monospacedDigit()
+                .shadow(color: .black.opacity(0.55), radius: 1, x: 0, y: 0.5)
                 .frame(height: NotchLayout.percentLineHeight)
                 .opacity(opacityForStatus)
         }

@@ -46,8 +46,14 @@ struct NotchView: View {
             LeftHalfStadium()
                 .fill(Palette.notch)
                 .frame(width: NotchLayout.pillWidth, height: NotchLayout.pillHeight)
-                .shadow(color: Palette.shadow, radius: 8, x: 3, y: 0)
-                .offset(x: 0) // flush — flat edge sits on screen.frame.minX
+                .overlay(alignment: .trailing) {
+                    // Subtle edge highlight on the round side
+                    LeftHalfStadium()
+                        .stroke(Color.white.opacity(0.10), lineWidth: 0.8)
+                        .frame(width: NotchLayout.pillWidth, height: NotchLayout.pillHeight)
+                }
+                .shadow(color: Color.black.opacity(0.55), radius: 10, x: 4, y: 0)
+                .offset(x: 0)
         }
         .frame(width: max(NotchLayout.pillWidth + 8, NotchLayout.pillHotZone),
                height: NotchLayout.restHitHeight,
@@ -68,7 +74,11 @@ struct NotchView: View {
         .background {
             SideNotchShape()
                 .fill(Palette.notch)
-                .shadow(color: Palette.shadow, radius: 14, x: 4, y: 0)
+                .overlay {
+                    SideNotchShape()
+                        .stroke(Color.white.opacity(0.07), lineWidth: 0.7)
+                }
+                .shadow(color: Color.black.opacity(0.55), radius: 16, x: 5, y: 0)
         }
         .clipShape(SideNotchShape())
         .offset(x: 0)
