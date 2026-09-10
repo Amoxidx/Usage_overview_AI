@@ -10,6 +10,8 @@ final class NotchWindowController {
     private let hover = HoverSession()
     private var screenObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
+    private var globalClickMonitor: Any?
+    private var localClickMonitor: Any?
     private var collapseWork: DispatchWorkItem?
     private var pollTimer: Timer?
     private var forceExpandedLocked = false
@@ -62,6 +64,12 @@ final class NotchWindowController {
         if let mouseMonitor {
             NSEvent.removeMonitor(mouseMonitor)
         }
+        if let globalClickMonitor {
+            NSEvent.removeMonitor(globalClickMonitor)
+        }
+        if let localClickMonitor {
+            NSEvent.removeMonitor(localClickMonitor)
+        }
         if let screenObserver {
             NotificationCenter.default.removeObserver(screenObserver)
         }
@@ -82,6 +90,41 @@ final class NotchWindowController {
         _ = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] event in
             Task { @MainActor in self?.handleMouseMoved() }
             return event
+        }
+
+        // The panel has `ignoresMouseEvents = true` (clicks must pass through
+        // to whatever is behind it), so a SwiftUI Button/onTapGesture inside
+        // the notch would never fire. Mirror the mouse-move pattern above:
+        // observe clicks without consuming them, and react only when one
+        // lands on the currently-hovered provider's onboarding action.
+        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] _ in
+            Task { @MainActor in self?.handleClick() }
+        }
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
+            Task { @MainActor in self?.handleClick() }
+            return event
+        }
+    }
+
+    /// Onboarding click: only acts while expanded, only for the hovered
+    /// provider's row (ring + tooltip share the same vertical band used for
+    /// hover selection), and only when that provider actually needs a login.
+    private func handleClick() {
+        guard let panel, hover.isExpanded, !forceExpandedLocked else { return }
+        guard let hoveredID = hover.hovered else { return }
+        let mouse = NSEvent.mouseLocation
+        guard panel.frame.contains(mouse), providerID(at: mouse, in: panel) == hoveredID else { return }
+        guard let reading = store.readings[hoveredID] else { return }
+        switch reading.status {
+        case .needsAuth:
+            ProviderLoginLauncher.openLoginTerminal(for: hoveredID)
+            store.beginLoginWatch(for: hoveredID)
+        case .needsInstall:
+            // Non-goal: no silent CLI install. The tooltip already shows the
+            // install hint; there is nothing safe to launch from a click.
+            break
+        case .ok, .stale, .error, .nothingMetered:
+            break
         }
     }
 

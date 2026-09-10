@@ -53,8 +53,10 @@ actor ClaudeUsageProvider: UsageProvider {
 }
 
 enum ClaudeUsageParser {
-    /// Locate common Claude Code install paths and run `/usage`.
-    static func runClaudeUsage() throws -> String {
+    /// Known Claude Code install locations, in lookup order. Shared with
+    /// `ProviderLoginLauncher` so the "is it installed" check matches exactly
+    /// what `/usage` and `auth status` would use.
+    static func locateBinary(fileManager: FileManager = .default) -> URL? {
         let home = URL(fileURLWithPath: NSHomeDirectory())
         let candidates = [
             home.appendingPathComponent(".local/bin/claude"),
@@ -63,7 +65,12 @@ enum ClaudeUsageParser {
             URL(fileURLWithPath: "/opt/homebrew/bin/claude"),
             URL(fileURLWithPath: "/usr/local/bin/claude")
         ]
-        guard let binary = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0.path) })
+        return candidates.first(where: { fileManager.isExecutableFile(atPath: $0.path) })
+    }
+
+    /// Locate common Claude Code install paths and run `/usage`.
+    static func runClaudeUsage() throws -> String {
+        guard let binary = locateBinary()
         else { throw UsageFetchError.unavailable("claude nicht installiert") }
 
         let scratch = FileManager.default.temporaryDirectory
