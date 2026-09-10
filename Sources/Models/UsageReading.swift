@@ -14,6 +14,8 @@ enum ProviderStatus: Equatable, Sendable {
     case ok
     case stale(since: Date)
     case needsAuth
+    /// CLI binary itself is missing (distinct from installed-but-signed-out).
+    case needsInstall
     case error(String)
     case nothingMetered
 }

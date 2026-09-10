@@ -11,6 +11,9 @@ final class UsageStore: ObservableObject {
     private let pollInterval: TimeInterval
     private let providers: [any UsageProvider]
     private var lastGood: [ProviderID: UsageReading] = [:]
+    /// Short-lived rapid re-poll of exactly one provider after a login attempt
+    /// (see `beginLoginWatch`), so the ring doesn't wait for the next 60s tick.
+    private var loginWatchTask: Task<Void, Never>?
 
     init(pollInterval: TimeInterval = 60,
          providers: [any UsageProvider]? = nil) {
@@ -45,6 +48,8 @@ final class UsageStore: ObservableObject {
     func stop() {
         timer?.invalidate()
         timer = nil
+        loginWatchTask?.cancel()
+        loginWatchTask = nil
     }
 
     func refreshAll() async {
@@ -65,29 +70,65 @@ final class UsageStore: ObservableObject {
                 }
             }
             for await (id, result) in group {
-                apply(id: id, result: result)
+                await apply(id: id, result: result)
             }
         }
     }
 
-    private func apply(id: ProviderID, result: Result<UsageReading, Error>) {
+    /// After the user triggers a login (`ProviderLoginLauncher.openLoginTerminal`),
+    /// poll a cheap, non-`fetch()` signal every few seconds for a short window
+    /// instead of waiting for the next full 60s cycle. Only the triggering
+    /// provider is touched — the other two stay on the regular timer.
+    func beginLoginWatch(for id: ProviderID, timeout: TimeInterval = 150, pollEvery: TimeInterval = 4) {
+        guard !DemoData.isEnabled, let provider = providers.first(where: { $0.id == id }) else { return }
+        loginWatchTask?.cancel()
+        loginWatchTask = Task { [weak self] in
+            let deadline = Date().addingTimeInterval(timeout)
+            while !Task.isCancelled, Date() < deadline {
+                try? await Task.sleep(nanoseconds: UInt64(pollEvery * 1_000_000_000))
+                if Task.isCancelled { return }
+                guard await ProviderLoginLauncher.isLoggedIn(for: id) else { continue }
+                guard let self else { return }
+                let result: Result<UsageReading, Error>
+                do {
+                    result = .success(try await provider.fetch())
+                } catch {
+                    result = .failure(error)
+                }
+                await self.apply(id: id, result: result)
+                return
+            }
+        }
+    }
+
+    private func apply(id: ProviderID, result: Result<UsageReading, Error>) async {
         switch result {
         case .success(let reading):
             lastGood[id] = reading
             readings[id] = reading
         case .failure(let error):
-            let status: ProviderStatus
+            var status: ProviderStatus
             if let fetch = error as? UsageFetchError {
                 switch fetch {
                 case .needsAuth, .credentialExpired:
                     status = .needsAuth
+                case .unavailable:
+                    status = .needsInstall
                 case .nothingMetered:
                     status = .nothingMetered
-                case .rateLimited, .badResponse, .unavailable:
+                case .rateLimited, .badResponse:
                     status = .error(String(describing: fetch))
                 }
             } else {
                 status = .error(error.localizedDescription)
+            }
+
+            // Codex/Grok only ever throw `.needsAuth` (their auth-file check
+            // can't tell "missing file" from "CLI never installed") — ask the
+            // launcher's real binary check to upgrade the status when that's
+            // actually the case, so onboarding shows "install" not "sign in".
+            if case .needsAuth = status, await !ProviderLoginLauncher.isInstalled(for: id) {
+                status = .needsInstall
             }
 
             if var cached = lastGood[id], !cached.windows.isEmpty {

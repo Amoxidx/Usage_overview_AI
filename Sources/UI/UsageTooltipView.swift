@@ -13,9 +13,19 @@ struct UsageTooltipView: View {
             VStack(alignment: .leading, spacing: NotchLayout.blockSpacing) {
                 header
                 if reading.windows.isEmpty {
-                    Text(statusMessage)
-                        .font(Typography.cardBody)
-                        .foregroundStyle(Palette.textSecondary)
+                    VStack(alignment: .leading, spacing: NotchLayout.blockSpacing / 2) {
+                        Text(statusMessage)
+                            .font(Typography.cardBody)
+                            .foregroundStyle(Palette.textSecondary)
+                        // Visible onboarding action. The tap itself is caught by
+                        // NotchWindowController's mouse monitor — the panel
+                        // ignores mouse events so no SwiftUI Button ever fires.
+                        if let actionHint {
+                            Text(actionHint)
+                                .font(Typography.cardBody.weight(.semibold))
+                                .foregroundStyle(reading.id.accent)
+                        }
+                    }
                 } else {
                     ForEach(reading.windows) { window in
                         LimitWindowRow(window: window, provider: reading.id)
@@ -52,10 +62,19 @@ struct UsageTooltipView: View {
     private var statusMessage: String {
         switch reading.status {
         case .needsAuth: return DE.needsAuth
+        case .needsInstall: return DE.needsInstall
         case .nothingMetered: return DE.nothingMetered
         case .error: return DE.error
         case .stale: return DE.stale
         case .ok: return DE.noReading
+        }
+    }
+
+    private var actionHint: String? {
+        switch reading.status {
+        case .needsAuth: return DE.clickToLogin
+        case .needsInstall: return DE.installHint
+        case .ok, .stale, .error, .nothingMetered: return nil
         }
     }
 }

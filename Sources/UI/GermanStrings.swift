@@ -15,10 +15,16 @@ enum DE {
     static let used = "genutzt"
     static let noReading = "Keine Messung"
     static let needsAuth = "Anmeldung erforderlich"
+    static let needsInstall = "CLI nicht installiert"
     static let stale = "Veraltet"
     static let error = "Fehler"
     static let nothingMetered = "Nichts gemessen"
     static let demoBadge = "DEMO"
+
+    /// Shown as the clickable-looking hint line under `needsAuth`.
+    static let clickToLogin = "Zum Anmelden anklicken"
+    /// Shown under `needsInstall` — points at the CLI, never at a guessed URL.
+    static let installHint = "CLI installieren, dann erneut versuchen"
 
     static func resetsIn(minutes: Int) -> String {
         if minutes < 60 { return "Zurücksetzen in \(minutes) Min." }

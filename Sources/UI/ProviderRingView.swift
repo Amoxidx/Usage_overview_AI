@@ -53,6 +53,19 @@ struct ProviderRingView: View {
             .compositingGroup()
             .scaleEffect(isHovered ? 1.04 : 1)
             .animation(.easeInOut(duration: 0.2), value: isHovered)
+            .overlay(alignment: .topTrailing) {
+                // Visible hint that hovering + clicking this ring does something —
+                // the actual click is caught by NotchWindowController's mouse
+                // monitor (the panel ignores mouse events by design).
+                if let actionBadge {
+                    Image(systemName: actionBadge)
+                        .font(.system(size: Design.px(15), weight: .bold))
+                        .foregroundStyle(Palette.textPrimary)
+                        .padding(Design.px(3))
+                        .background(Circle().fill(Palette.notch))
+                        .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 0.8))
+                }
+            }
 
             Text(percentLabel)
                 .font(Typography.percent)
@@ -70,8 +83,18 @@ struct ProviderRingView: View {
             return "\(PercentFormat.text(for: fraction))%"
         }
         switch reading.status {
-        case .needsAuth, .nothingMetered, .stale, .ok: return "—"
+        case .needsAuth, .needsInstall, .nothingMetered, .stale, .ok: return "—"
         case .error: return "!"
+        }
+    }
+
+    /// SF Symbol for the onboarding action badge, `nil` when there is nothing
+    /// to trigger from here.
+    private var actionBadge: String? {
+        switch reading.status {
+        case .needsAuth: return "arrow.right.circle.fill"
+        case .needsInstall: return "arrow.down.circle.fill"
+        case .ok, .stale, .error, .nothingMetered: return nil
         }
     }
 
