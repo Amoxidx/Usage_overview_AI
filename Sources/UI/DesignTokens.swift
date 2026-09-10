@@ -71,6 +71,21 @@ enum NotchLayout {
 
     static var ringMargin: CGFloat { (sideBodyDepth - ringDiameter) / 2 }
 
+    /// Vertical center of a provider ring, relative to the notch chrome's top.
+    /// Uses the circle — not the cell (ring + percent label) — so the caret aims at the glyph.
+    static func ringCenterY(for id: ProviderID) -> CGFloat {
+        let index = CGFloat(ProviderID.allCases.firstIndex(of: id) ?? 0)
+        return curlRadius + padTop + ringDiameter / 2
+            + index * (cellExtent + cellSpacing)
+    }
+
+    /// Top-edge alignment-guide value that places the tooltip's vertical center
+    /// (and therefore its left caret) on `ringCenterY`. Works for any card height;
+    /// a guessed half-height does not, because Claude/Codex/Grok tooltips differ.
+    static func tooltipTopAlignmentGuide(for id: ProviderID, tooltipHeight: CGFloat) -> CGFloat {
+        tooltipHeight / 2 - ringCenterY(for: id)
+    }
+
     /// Resting handle hit width (visual pill plus slack).
     static var collapsedHitWidth: CGFloat { max(pillWidth + 8, pillHotZone) }
 

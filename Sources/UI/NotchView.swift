@@ -17,7 +17,9 @@ struct NotchView: View {
 
             if expanded, let id = hover.hovered, let reading = store.readings[id] {
                 UsageTooltipView(reading: reading)
-                    .padding(.top, tooltipTopPadding(for: id))
+                    .alignmentGuide(.top) { d in
+                        NotchLayout.tooltipTopAlignmentGuide(for: id, tooltipHeight: d.height)
+                    }
                     .transition(tooltipTransition)
             }
         }
@@ -37,15 +39,6 @@ struct NotchView: View {
                 .combined(with: .offset(x: -6))
                 .animation(Motion.collapse)
         )
-    }
-
-    private func tooltipTopPadding(for id: ProviderID) -> CGFloat {
-        let index = CGFloat(ProviderID.allCases.firstIndex(of: id) ?? 0)
-        let ringCenterY = NotchLayout.curlRadius + NotchLayout.padTop
-            + NotchLayout.ringDiameter / 2
-            + index * (NotchLayout.cellExtent + NotchLayout.cellSpacing)
-        let approxHalf: CGFloat = Design.px(210)
-        return max(0, ringCenterY - approxHalf)
     }
 
     /// Stable outer box (expanded size) so the pill grows up/down/right from the bezel.
