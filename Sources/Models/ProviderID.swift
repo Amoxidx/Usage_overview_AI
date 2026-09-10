@@ -27,7 +27,7 @@ enum ProviderID: String, CaseIterable, Identifiable, Codable, Sendable {
         }
     }
 
-    /// Codex stays blue even at high usage (no critical red).
-    var usesFixedAccent: Bool { self == .codex }
+    /// Codex stays blue and Grok stays yellow even at high usage (no critical red).
+    var usesFixedAccent: Bool { self == .codex || self == .grok }
 }
 
