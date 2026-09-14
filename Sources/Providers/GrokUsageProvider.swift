@@ -1,22 +1,55 @@
 import Foundation
 
-/// Grok Build credits from `~/.grok/auth.json` + billing endpoint (read-only).
+/// Grok Build credits from `~/.grok/auth.json` + billing endpoint.
 actor GrokUsageProvider: UsageProvider {
     nonisolated let id: ProviderID = .grok
 
     private let session: URLSession
     private let authURL: URL
+    private let now: @Sendable () -> Date
     private let creditsURL = URL(string: "https://cli-chat-proxy.grok.com/v1/billing?format=credits")!
 
-    init(session: URLSession = .shared, authURL: URL = AuthReaders.grokAuthURL) {
+    init(
+        session: URLSession = .shared,
+        authURL: URL = AuthReaders.grokAuthURL,
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
         self.session = session
         self.authURL = authURL
+        self.now = now
     }
 
     func fetch() async throws -> UsageReading {
-        let credentials = try AuthReaders.loadGrok(from: authURL)
-        if credentials.expiresAt <= Date() { throw UsageFetchError.credentialExpired }
+        var credentials = try AuthReaders.loadGrok(from: authURL)
+        let fetchedAt = now()
+        if credentials.expiresAt <= fetchedAt.addingTimeInterval(120) {
+            credentials = try await refresh(credentials, now: fetchedAt)
+        }
 
+        do {
+            return try await fetchUsage(with: credentials, fetchedAt: fetchedAt)
+        } catch UsageFetchError.needsAuth {
+            let refreshed = try await refresh(credentials, now: now())
+            return try await fetchUsage(with: refreshed, fetchedAt: now())
+        }
+    }
+
+    private func refresh(
+        _ credential: AuthReaders.GrokCredential,
+        now: Date
+    ) async throws -> AuthReaders.GrokCredential {
+        try await AuthReaders.refreshGrok(
+            credential: credential,
+            authURL: authURL,
+            session: session,
+            now: now
+        )
+    }
+
+    private func fetchUsage(
+        with credentials: AuthReaders.GrokCredential,
+        fetchedAt: Date
+    ) async throws -> UsageReading {
         var request = URLRequest(url: creditsURL)
         request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("xai-grok-cli", forHTTPHeaderField: "X-XAI-Token-Auth")
@@ -37,7 +70,7 @@ actor GrokUsageProvider: UsageProvider {
             status: .ok,
             windows: windows,
             headlineID: "credits",
-            fetchedAt: Date()
+            fetchedAt: fetchedAt
         )
     }
 }
