@@ -9,12 +9,16 @@ final class UsageStore: ObservableObject {
 
     private var timer: Timer?
     private let pollInterval: TimeInterval
+    private let staleAfter: TimeInterval
     private let providers: [any UsageProvider]
     private var lastGood: [ProviderID: UsageReading] = [:]
+    private var nextAllowedFetch: [ProviderID: Date] = [:]
 
     init(pollInterval: TimeInterval = 60,
+         staleAfter: TimeInterval = 5 * 60,
          providers: [any UsageProvider]? = nil) {
         self.pollInterval = pollInterval
+        self.staleAfter = staleAfter
         self.isDemo = DemoData.isEnabled
         if DemoData.isEnabled {
             self.providers = []
@@ -55,6 +59,9 @@ final class UsageStore: ObservableObject {
         }
         await withTaskGroup(of: (ProviderID, Result<UsageReading, Error>).self) { group in
             for provider in providers {
+                if let until = nextAllowedFetch[provider.id], Date() < until {
+                    continue
+                }
                 group.addTask {
                     do {
                         let reading = try await provider.fetch()
@@ -75,7 +82,22 @@ final class UsageStore: ObservableObject {
         case .success(let reading):
             lastGood[id] = reading
             readings[id] = reading
+            nextAllowedFetch[id] = nil
         case .failure(let error):
+            if let fetch = error as? UsageFetchError {
+                switch fetch {
+                case .needsAuth, .credentialExpired:
+                    // An expired token does not become valid by waiting; a frozen percentage claims recency that is not there.
+                    lastGood[id] = nil
+                    readings[id] = UsageReading.empty(id, status: .needsAuth)
+                    return
+                case .rateLimited(let retryAfter):
+                    nextAllowedFetch[id] = Date().addingTimeInterval(max(retryAfter, pollInterval))
+                case .nothingMetered, .badResponse, .unavailable:
+                    break
+                }
+            }
+
             let status: ProviderStatus
             if let fetch = error as? UsageFetchError {
                 switch fetch {
@@ -91,6 +113,20 @@ final class UsageStore: ObservableObject {
             }
 
             if var cached = lastGood[id], !cached.windows.isEmpty {
+                let isTransient: Bool
+                if let fetch = error as? UsageFetchError {
+                    switch fetch {
+                    case .rateLimited, .badResponse, .unavailable:
+                        isTransient = true
+                    case .needsAuth, .credentialExpired, .nothingMetered:
+                        isTransient = false
+                    }
+                } else {
+                    isTransient = false
+                }
+                if isTransient, let fetchedAt = cached.fetchedAt, Date().timeIntervalSince(fetchedAt) < staleAfter {
+                    return
+                }
                 cached.status = .stale(since: cached.fetchedAt ?? Date())
                 readings[id] = cached
             } else {
