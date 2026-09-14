@@ -64,5 +64,7 @@ schemes:
         USAGE_OVERVIEW_DEMO: "1"
     test:
       config: Debug
+      environmentVariables:
+        USAGE_OVERVIEW_DEMO: "0"
       targets:
         - UsageOverviewTests
