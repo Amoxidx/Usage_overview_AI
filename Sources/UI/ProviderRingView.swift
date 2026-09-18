@@ -7,9 +7,8 @@ struct ProviderRingView: View {
 
     private var fraction: Double? { reading.usedFraction }
     private var sweep: CGFloat { CGFloat(min(max(fraction ?? 0, 0), 1)) }
-    private var band: UsageBand { UsageBand.band(for: fraction ?? 0) }
     private var progressColor: Color {
-        band.color(accent: reading.id.accent, fixedAccent: reading.id.usesFixedAccent)
+        reading.id.ringColor(usedFraction: fraction)
     }
 
     var body: some View {
