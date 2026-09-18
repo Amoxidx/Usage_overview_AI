@@ -65,7 +65,6 @@ private struct LimitWindowRow: View {
     let window: UsageWindow
     let provider: ProviderID
 
-    private var band: UsageBand { UsageBand.band(for: window.usedFraction ?? 0) }
     private var trackWidth: CGFloat { NotchLayout.cardWidth - 2 * NotchLayout.cardPadding }
 
     var body: some View {
@@ -86,7 +85,7 @@ private struct LimitWindowRow: View {
                 GeometryReader { geo in
                     let fill = max(NotchLayout.barHeight,
                                    geo.size.width * CGFloat(min(max(fraction, 0), 1)))
-                    let color = band.color(accent: provider.accent, fixedAccent: provider.usesFixedAccent)
+                    let color = provider.ringColor(usedFraction: window.usedFraction)
                     ZStack(alignment: .leading) {
                         Capsule().fill(Palette.barTrack)
                         Capsule()

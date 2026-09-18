@@ -18,7 +18,7 @@ enum ProviderID: String, CaseIterable, Identifiable, Codable, Sendable {
         }
     }
 
-    /// Fixed accent colour matching the design frame (not usage-band coloured).
+    /// Brand colour for ring and tooltip bar at every usage level.
     var accent: Color {
         switch self {
         case .claude: return Color(hex: 0xFF5A2A) // Claude orange
@@ -27,7 +27,8 @@ enum ProviderID: String, CaseIterable, Identifiable, Codable, Sendable {
         }
     }
 
-    /// Codex stays blue and Grok stays yellow even at high usage (no critical red).
-    var usesFixedAccent: Bool { self == .codex || self == .grok }
+    /// Ring and tooltip-bar colour. Deliberately independent of `usedFraction`:
+    /// every provider keeps its brand colour from 0 % to 100 %.
+    func ringColor(usedFraction: Double?) -> Color { accent }
 }
 

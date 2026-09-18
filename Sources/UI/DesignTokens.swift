@@ -131,9 +131,6 @@ enum Palette {
     static let card          = Color.black
     static let ringTrack     = Color(hex: 0x3A3A3A)
     static let barTrack      = Color(hex: 0x333333)
-    static let ample         = Color(hex: 0x00FF88)
-    static let watch         = Color(hex: 0xF2FF00)
-    static let critical      = Color(hex: 0xFF3F00)
     static let textPrimary   = Color.white
     static let textSecondary = Color(hex: 0x808080)
     static let shadow        = Color.black.opacity(0.45)
