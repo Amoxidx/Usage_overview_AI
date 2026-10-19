@@ -1,20 +1,77 @@
 import Foundation
 
-/// Codex / ChatGPT usage from local `~/.codex/auth.json` (read-only) + usage endpoint.
+/// Codex / ChatGPT usage from local `~/.codex/auth.json` + usage endpoint.
+/// Refreshes the ChatGPT OAuth token when it is expired, inside 120 seconds of expiry, or rejected.
 actor CodexUsageProvider: UsageProvider {
     nonisolated let id: ProviderID = .codex
 
     private let session: URLSession
     private let authURL: URL
+    private let now: @Sendable () -> Date
+    /// One in-flight refresh. The actor re-enters on await, and a second exchange would rotate the refresh token twice.
+    private var refreshTask: Task<AuthReaders.CodexCredential, Error>?
     private let usageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
 
-    init(session: URLSession = .shared, authURL: URL = AuthReaders.defaultCodexAuthURL()) {
+    init(
+        session: URLSession = .shared,
+        authURL: URL = AuthReaders.defaultCodexAuthURL(),
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
         self.session = session
         self.authURL = authURL
+        self.now = now
     }
 
     func fetch() async throws -> UsageReading {
-        let credential = try AuthReaders.loadCodex(from: authURL)
+        let fetchedAt = now()
+        var credential = try AuthReaders.loadCodex(from: authURL)
+        if accessTokenNeedsRefresh(credential, now: fetchedAt) {
+            credential = try await refreshSerialized(credential)
+        }
+
+        do {
+            return try await fetchUsage(with: credential, fetchedAt: fetchedAt)
+        } catch UsageFetchError.needsAuth {
+            let refreshed = try await refreshSerialized(credential)
+            return try await fetchUsage(with: refreshed, fetchedAt: now())
+        }
+    }
+
+    private func accessTokenNeedsRefresh(
+        _ credential: AuthReaders.CodexCredential,
+        now: Date
+    ) -> Bool {
+        guard let expiresAt = credential.expiresAt else { return false }
+        return expiresAt.timeIntervalSince(now) < 120
+    }
+
+    private func refreshSerialized(
+        _ credential: AuthReaders.CodexCredential
+    ) async throws -> AuthReaders.CodexCredential {
+        if let refreshTask {
+            return try await refreshTask.value
+        }
+
+        let authURL = self.authURL
+        let session = self.session
+        let now = self.now()
+        let task = Task {
+            try await AuthReaders.refreshCodex(
+                credential: credential,
+                authURL: authURL,
+                session: session,
+                now: now
+            )
+        }
+        refreshTask = task
+        defer { refreshTask = nil }
+        return try await task.value
+    }
+
+    private func fetchUsage(
+        with credential: AuthReaders.CodexCredential,
+        fetchedAt: Date
+    ) async throws -> UsageReading {
         var request = URLRequest(url: usageURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
         request.httpMethod = "GET"
         request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
@@ -34,7 +91,7 @@ actor CodexUsageProvider: UsageProvider {
             status: .ok,
             windows: windows,
             headlineID: windows.first?.id,
-            fetchedAt: Date()
+            fetchedAt: fetchedAt
         )
     }
 }
