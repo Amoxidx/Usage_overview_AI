@@ -4,17 +4,37 @@ import Foundation
 /// `CLAUDE_CODE_OAUTH_TOKEN` (process environment, else non-interactive zsh,
 /// which reads `~/.zshenv`) is a long-lived setup token: `GET /api/oauth/usage`
 /// answers it with a permanent 429, so that path reads rate-limit headers from
-/// a 1-token Haiku `POST /v1/messages`. The login-keychain access token still
+/// a 1-token `POST /v1/messages`. The default model is the alias
+/// `claude-haiku-4-5`. A 404, or a non-2xx response without
+/// `anthropic-ratelimit-unified-5h-utilization`, is not a usable probe; the
+/// provider then lists `GET /v1/models`. The login-keychain access token still
 /// uses `GET /api/oauth/usage`. Used when `claude /usage` no longer prints
 /// `Current session: N% used` (CLI 2.1.233+ dumps contribution stats instead).
 enum ClaudeOAuth {
     static let service = "Claude Code-credentials"
     static let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
     static let messagesURL = URL(string: "https://api.anthropic.com/v1/messages")!
+    static let modelsURL = URL(string: "https://api.anthropic.com/v1/models")!
     static let betaHeader = "oauth-2025-04-20"
     static let messagesAPIVersion = "2023-06-01"
-    /// Smallest request that still returns `anthropic-ratelimit-unified-*`.
-    static let rateLimitProbeBody = #"{"model":"claude-haiku-4-5-20251001","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}"#
+    /// Alias, not a dated snapshot. A dated id 404s once that snapshot is gone.
+    static let defaultProbeModel = "claude-haiku-4-5"
+
+    /// One messages probe. Header presence is the success condition: a 429 that
+    /// still carries `5h-utilization` is a reading. 404 always asks for another
+    /// model, even if a header sneaks through. A 2xx without the header is
+    /// `missingHeaders` and does not by itself start a search.
+    enum RateLimitProbeResult: Sendable {
+        case windows([UsageWindow])
+        case needsAuth
+        case retryOtherModel(status: Int)
+        case missingHeaders(status: Int)
+    }
+
+    /// Stable JSON: key order must not depend on `JSONSerialization`.
+    static func rateLimitProbeBody(model: String) -> String {
+        #"{"model":"\#(model)","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}"#
+    }
 
     struct Credential: Sendable {
         let accessToken: String
@@ -181,35 +201,85 @@ enum ClaudeOAuth {
         return try ClaudeOAuthParser.windows(from: data, now: now)
     }
 
-    /// `POST /v1/messages` with a 1-token Haiku probe. Utilization headers are
-    /// fractions in 0...1, not percentages; resets are unix seconds. The body
-    /// is ignored. `now` is unused because those resets are absolute.
-    static func fetchWindowsFromRateLimitHeaders(
+    /// `POST /v1/messages` with a 1-token probe. Utilization headers are
+    /// fractions in 0...1, not percentages; resets are unix seconds. The
+    /// messages body is ignored.
+    static func probeRateLimit(
         session: URLSession,
         credential: Credential,
-        now: Date = Date()
-    ) async throws -> [UsageWindow] {
-        _ = now
+        model: String
+    ) async throws -> RateLimitProbeResult {
         var request = URLRequest(url: messagesURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
         request.httpMethod = "POST"
-        request.httpBody = Data(rateLimitProbeBody.utf8)
-        request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue(betaHeader, forHTTPHeaderField: "anthropic-beta")
-        request.setValue(messagesAPIVersion, forHTTPHeaderField: "anthropic-version")
+        request.httpBody = Data(rateLimitProbeBody(model: model).utf8)
+        authorize(&request, credential: credential)
         request.setValue("application/json", forHTTPHeaderField: "content-type")
 
         let (_, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        if status == 401 || status == 403 { throw UsageFetchError.needsAuth }
-
-        let headerWindows = (response as? HTTPURLResponse).flatMap { windowsFromRateLimitHeaders($0) }
-        if status == 429 {
-            if let headerWindows { return headerWindows }
-            throw UsageFetchError.rateLimited(retryAfter: retryAfterSeconds(from: response) ?? 60)
+        if status == 401 || status == 403 { return .needsAuth }
+        if status == 404 { return .retryOtherModel(status: status) }
+        if let http = response as? HTTPURLResponse, let windows = windowsFromRateLimitHeaders(http) {
+            return .windows(windows)
         }
+        if (200..<300).contains(status) { return .missingHeaders(status: status) }
+        return .retryOtherModel(status: status)
+    }
+
+    /// `GET /v1/models`. Only `data[].id` is read, in list order. 401/403 is
+    /// `needsAuth` so the caller can fall back to the keychain. Any other
+    /// non-2xx is `badResponse` and is not a completed candidate search.
+    static func listModelIDs(
+        session: URLSession,
+        credential: Credential
+    ) async throws -> [String] {
+        var request = URLRequest(url: modelsURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        request.httpMethod = "GET"
+        authorize(&request, credential: credential)
+
+        let (data, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 401 || status == 403 { throw UsageFetchError.needsAuth }
         guard (200..<300).contains(status) else { throw UsageFetchError.badResponse(status: status) }
-        guard let headerWindows else { throw UsageFetchError.badResponse(status: status) }
-        return headerWindows
+        guard let ids = modelIDs(from: data) else { throw UsageFetchError.badResponse(status: status) }
+        return ids
+    }
+
+    /// Haiku ids first, then everything else, each group in list order.
+    /// `current` is skipped so a failed probe is not repeated in the same run.
+    static func probeCandidates(from ids: [String], skipping current: String) -> [String] {
+        var haiku: [String] = []
+        var rest: [String] = []
+        for id in ids where !id.isEmpty && id != current {
+            if id.range(of: "haiku", options: .caseInsensitive) != nil {
+                haiku.append(id)
+            } else {
+                rest.append(id)
+            }
+        }
+        return haiku + rest
+    }
+
+    /// Nil when the body has no `data` array. Non-string ids are skipped.
+    static func modelIDs(from data: Data) -> [String]? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rows = root["data"] as? [Any]
+        else { return nil }
+        var ids: [String] = []
+        for row in rows {
+            guard let object = row as? [String: Any],
+                  let id = object["id"] as? String,
+                  !id.isEmpty
+            else { continue }
+            ids.append(id)
+        }
+        return ids
+    }
+
+    private static func authorize(_ request: inout URLRequest, credential: Credential) {
+        request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue(betaHeader, forHTTPHeaderField: "anthropic-beta")
+        request.setValue(messagesAPIVersion, forHTTPHeaderField: "anthropic-version")
     }
 
     /// Session is required. A missing weekly utilization omits `weekly_all`
