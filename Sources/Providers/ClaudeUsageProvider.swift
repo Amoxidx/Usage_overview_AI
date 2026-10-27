@@ -1,27 +1,145 @@
 import Foundation
 
 /// Claude usage: `claude /usage` when it still prints quota lines, otherwise
-/// the OAuth usage endpoint with the token Claude Code already keeps in
-/// the keychain (`Claude Code-credentials`).
+/// OAuth. `CLAUDE_CODE_OAUTH_TOKEN` (process environment, else non-interactive
+/// zsh / `~/.zshenv`) is sent as a 1-token `POST /v1/messages` (default model
+/// alias `claude-haiku-4-5`); windows come from `anthropic-ratelimit-unified-*`
+/// headers, because `GET /api/oauth/usage` permanently answers that token type
+/// with 429. A 404, or a non-2xx/429 without the 5h header, lists
+/// `GET /v1/models` and tries haiku ids first, then the rest, at most four
+/// extra probes. The first model that returns the header is remembered. A
+/// search that finds none waits an hour before listing models again. A
+/// successful env reading is reused for `envHeaderCacheInterval` (default
+/// 300s) without another request; the stored `fetchedAt` is kept. The keychain
+/// item `Claude Code-credentials` still uses the usage endpoint. A 401/403 on
+/// the env token or on `/v1/models` falls back to the keychain; any other
+/// failure is returned as-is.
 actor ClaudeUsageProvider: UsageProvider {
     nonisolated let id: ProviderID = .claude
 
+    /// After every candidate in a run lacks the header, `/v1/models` stays quiet this long.
+    private static let modelSearchCooldown: TimeInterval = 3600
+    /// Extra messages probes per run, not counting the remembered or default model.
+    private static let maxExtraModelProbes = 4
+
     private let session: URLSession
     private let runCLI: @Sendable () throws -> String
+    private let loadEnvironment: @Sendable () -> ClaudeOAuth.Credential?
+    private let loadKeychain: @Sendable () throws -> ClaudeOAuth.Credential
+    private let envHeaderCacheInterval: TimeInterval
+    private let now: @Sendable () -> Date
+
+    /// Last model whose messages probe carried `5h-utilization`.
+    private var preferredProbeModel: String?
+    /// Start of the hour in which a completed search found no usable model.
+    private var modelSearchFailedAt: Date?
+    /// Last successful env-header reading, including its original `fetchedAt`.
+    private var envHeaderCache: UsageReading?
 
     init(session: URLSession = .shared,
-         runCLI: (@Sendable () throws -> String)? = nil) {
+         runCLI: (@Sendable () throws -> String)? = nil,
+         loadEnvironment: @escaping @Sendable () -> ClaudeOAuth.Credential? = {
+             ClaudeOAuth.loadCredentialFromEnvironment()
+         },
+         loadKeychain: @escaping @Sendable () throws -> ClaudeOAuth.Credential = {
+             try ClaudeOAuth.loadCredentialFromKeychain()
+         },
+         envHeaderCacheInterval: TimeInterval = 300,
+         now: @escaping @Sendable () -> Date = { Date() }) {
         self.session = session
         self.runCLI = runCLI ?? { try ClaudeUsageParser.runClaudeUsage() }
+        self.loadEnvironment = loadEnvironment
+        self.loadKeychain = loadKeychain
+        self.envHeaderCacheInterval = envHeaderCacheInterval
+        self.now = now
     }
 
     func fetch() async throws -> UsageReading {
         if let windows = await cliWindows() {
             return reading(windows)
         }
-        let credential = try ClaudeOAuth.loadCredentialFromKeychain()
+        if let cached = freshEnvCache() {
+            return cached
+        }
+        if let credential = loadEnvironment() {
+            do {
+                let windows = try await fetchEnvHeaderWindows(credential)
+                let result = reading(windows)
+                envHeaderCache = result
+                return result
+            } catch UsageFetchError.needsAuth {
+                // 401/403: the env token was rejected. The keychain may still be valid.
+            }
+        }
+        let credential = try loadKeychain()
         let windows = try await ClaudeOAuth.fetchWindows(session: session, credential: credential)
         return reading(windows)
+    }
+
+    /// Zero and negative intervals never hit: tests pass 0 to force a request.
+    /// A negative age (clock moved backwards) is not treated as fresh.
+    private func freshEnvCache() -> UsageReading? {
+        guard envHeaderCacheInterval > 0,
+              let cached = envHeaderCache,
+              let fetchedAt = cached.fetchedAt
+        else { return nil }
+        let age = now().timeIntervalSince(fetchedAt)
+        guard age >= 0, age < envHeaderCacheInterval else { return nil }
+        return cached
+    }
+
+    private func fetchEnvHeaderWindows(
+        _ credential: ClaudeOAuth.Credential
+    ) async throws -> [UsageWindow] {
+        let model = preferredProbeModel ?? ClaudeOAuth.defaultProbeModel
+        switch try await ClaudeOAuth.probeRateLimit(session: session, credential: credential, model: model) {
+        case .windows(let windows):
+            preferredProbeModel = model
+            modelSearchFailedAt = nil
+            return windows
+        case .needsAuth:
+            throw UsageFetchError.needsAuth
+        case .missingHeaders(let status):
+            // A 2xx without the header is a bad payload, not a dead model id.
+            throw UsageFetchError.badResponse(status: status)
+        case .retryOtherModel(let status):
+            return try await searchOtherModels(credential: credential, skipping: model, failedStatus: status)
+        }
+    }
+
+    private func searchOtherModels(
+        credential: ClaudeOAuth.Credential,
+        skipping current: String,
+        failedStatus: Int
+    ) async throws -> [UsageWindow] {
+        if let failedAt = modelSearchFailedAt,
+           now().timeIntervalSince(failedAt) < Self.modelSearchCooldown {
+            throw UsageFetchError.badResponse(status: failedStatus)
+        }
+
+        let ids = try await ClaudeOAuth.listModelIDs(session: session, credential: credential)
+        let candidates = ClaudeOAuth.probeCandidates(from: ids, skipping: current)
+            .prefix(Self.maxExtraModelProbes)
+        var lastStatus = failedStatus
+        for candidate in candidates {
+            switch try await ClaudeOAuth.probeRateLimit(session: session, credential: credential, model: candidate) {
+            case .windows(let windows):
+                preferredProbeModel = candidate
+                modelSearchFailedAt = nil
+                return windows
+            case .needsAuth:
+                throw UsageFetchError.needsAuth
+            case .missingHeaders(let status):
+                lastStatus = status
+            case .retryOtherModel(let status):
+                lastStatus = status
+            }
+        }
+        // List came back and none of the probes (or an empty list) had the header.
+        // A thrown list call never reaches here, so a down `/v1/models` does not
+        // lock the search for an hour.
+        modelSearchFailedAt = now()
+        throw UsageFetchError.badResponse(status: lastStatus)
     }
 
     private func reading(_ windows: [UsageWindow]) -> UsageReading {
@@ -30,7 +148,7 @@ actor ClaudeUsageProvider: UsageProvider {
             status: .ok,
             windows: windows,
             headlineID: "weekly_all",
-            fetchedAt: Date()
+            fetchedAt: now()
         )
     }
 
