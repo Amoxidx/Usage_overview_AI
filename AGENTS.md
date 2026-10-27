@@ -29,7 +29,7 @@ Inspired by [vinzdg/codenotch](https://github.com/vinzdg/codenotch) (MIT) but **
 | `Models/` | `ProviderID`, `UsageReading`, `UsageWindow` |
 
 ## Data sources (read-only)
-- **Claude**: run `~/.local/bin/claude /usage` (stdin null). Parse `Current session` + `Current week (all models)`.
+- **Claude**: `claude /usage` (stdin null; parse `Current session` + `Current week (all models)`); else `CLAUDE_CODE_OAUTH_TOKEN` (process environment, else non-interactive zsh / `~/.zshenv`) → `POST /v1/messages` (1-token Haiku) and read `anthropic-ratelimit-unified-*` headers (fractions, not percents), because `GET /api/oauth/usage` answers that token type with a permanent 429. A 401/403 falls back to the keychain token on `GET /api/oauth/usage`.
 - **Codex**: `~/.codex/auth.json` → `tokens.access_token` + `tokens.account_id` → `https://chatgpt.com/backend-api/wham/usage`
 - **Grok**: `~/.grok/auth.json` entry under `https://auth.x.ai::…` → field `key` → `https://cli-chat-proxy.grok.com/v1/billing?format=credits` (token may expire → user runs `grok login`)
 

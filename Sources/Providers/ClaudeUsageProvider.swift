@@ -1,25 +1,51 @@
 import Foundation
 
 /// Claude usage: `claude /usage` when it still prints quota lines, otherwise
-/// the OAuth usage endpoint with the token Claude Code already keeps in
-/// the keychain (`Claude Code-credentials`).
+/// OAuth. `CLAUDE_CODE_OAUTH_TOKEN` (process environment, else non-interactive
+/// zsh / `~/.zshenv`) is sent as a 1-token Haiku `POST /v1/messages`; windows
+/// come from `anthropic-ratelimit-unified-*` headers, because
+/// `GET /api/oauth/usage` permanently answers that token type with 429.
+/// The keychain item `Claude Code-credentials` still uses the usage endpoint.
+/// A 401/403 on the env token falls back to the keychain; any other failure
+/// is returned as-is.
 actor ClaudeUsageProvider: UsageProvider {
     nonisolated let id: ProviderID = .claude
 
     private let session: URLSession
     private let runCLI: @Sendable () throws -> String
+    private let loadEnvironment: @Sendable () -> ClaudeOAuth.Credential?
+    private let loadKeychain: @Sendable () throws -> ClaudeOAuth.Credential
 
     init(session: URLSession = .shared,
-         runCLI: (@Sendable () throws -> String)? = nil) {
+         runCLI: (@Sendable () throws -> String)? = nil,
+         loadEnvironment: @escaping @Sendable () -> ClaudeOAuth.Credential? = {
+             ClaudeOAuth.loadCredentialFromEnvironment()
+         },
+         loadKeychain: @escaping @Sendable () throws -> ClaudeOAuth.Credential = {
+             try ClaudeOAuth.loadCredentialFromKeychain()
+         }) {
         self.session = session
         self.runCLI = runCLI ?? { try ClaudeUsageParser.runClaudeUsage() }
+        self.loadEnvironment = loadEnvironment
+        self.loadKeychain = loadKeychain
     }
 
     func fetch() async throws -> UsageReading {
         if let windows = await cliWindows() {
             return reading(windows)
         }
-        let credential = try ClaudeOAuth.loadCredentialFromKeychain()
+        if let credential = loadEnvironment() {
+            do {
+                let windows = try await ClaudeOAuth.fetchWindowsFromRateLimitHeaders(
+                    session: session,
+                    credential: credential
+                )
+                return reading(windows)
+            } catch UsageFetchError.needsAuth {
+                // 401/403: the env token was rejected. The keychain may still be valid.
+            }
+        }
+        let credential = try loadKeychain()
         let windows = try await ClaudeOAuth.fetchWindows(session: session, credential: credential)
         return reading(windows)
     }
