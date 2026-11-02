@@ -5,9 +5,11 @@ import Foundation
 /// which reads `~/.zshenv`) is a long-lived setup token: `GET /api/oauth/usage`
 /// answers it with a permanent 429, so that path reads rate-limit headers from
 /// a 1-token `POST /v1/messages`. The default model is the alias
-/// `claude-haiku-4-5`. A 404, or a non-2xx response without
-/// `anthropic-ratelimit-unified-5h-utilization`, is not a usable probe; the
-/// provider then lists `GET /v1/models`. The login-keychain access token still
+/// `claude-haiku-4-5`. A probe is usable when the response carries
+/// `anthropic-ratelimit-unified-5h-utilization` or
+/// `anthropic-ratelimit-unified-7d-utilization`. A 404, or a non-2xx response
+/// without either, is not a usable probe; the provider then lists
+/// `GET /v1/models`. The login-keychain access token still
 /// uses `GET /api/oauth/usage`. Used when `claude /usage` no longer prints
 /// `Current session: N% used` (CLI 2.1.233+ dumps contribution stats instead).
 enum ClaudeOAuth {
@@ -21,9 +23,10 @@ enum ClaudeOAuth {
     static let defaultProbeModel = "claude-haiku-4-5"
 
     /// One messages probe. Header presence is the success condition: a 429 that
-    /// still carries `5h-utilization` is a reading. 404 always asks for another
-    /// model, even if a header sneaks through. A 2xx without the header is
-    /// `missingHeaders` and does not by itself start a search.
+    /// still carries `5h-utilization` or `7d-utilization` is a reading. 404
+    /// always asks for another model, even if a header sneaks through. A 2xx
+    /// without either utilization is `missingHeaders` and does not by itself
+    /// start a search.
     enum RateLimitProbeResult: Sendable {
         case windows([UsageWindow])
         case needsAuth
@@ -282,22 +285,21 @@ enum ClaudeOAuth {
         request.setValue(messagesAPIVersion, forHTTPHeaderField: "anthropic-version")
     }
 
-    /// Session is required. A missing weekly utilization omits `weekly_all`
-    /// instead of inventing a percentage. Header names are matched
-    /// case-insensitively by `value(forHTTPHeaderField:)`.
+    /// `session` only from `5h-utilization`, `weekly_all` only from
+    /// `7d-utilization`, in that order. Nil when both are missing; a missing
+    /// window is omitted instead of inventing a percentage. Header names are
+    /// matched case-insensitively by `value(forHTTPHeaderField:)`.
     private static func windowsFromRateLimitHeaders(_ http: HTTPURLResponse) -> [UsageWindow]? {
-        guard let sessionUsed = fraction(http, "anthropic-ratelimit-unified-5h-utilization") else {
-            return nil
-        }
-        var windows = [
-            UsageWindow(
+        var windows: [UsageWindow] = []
+        if let sessionUsed = fraction(http, "anthropic-ratelimit-unified-5h-utilization") {
+            windows.append(UsageWindow(
                 id: "session",
                 label: DE.currentSession,
                 usedFraction: sessionUsed,
                 resetsAt: unixDate(http, "anthropic-ratelimit-unified-5h-reset"),
                 duration: 5 * 3600
-            )
-        ]
+            ))
+        }
         if let weeklyUsed = fraction(http, "anthropic-ratelimit-unified-7d-utilization") {
             windows.append(UsageWindow(
                 id: "weekly_all",
@@ -307,7 +309,7 @@ enum ClaudeOAuth {
                 duration: 7 * 86400
             ))
         }
-        return windows
+        return windows.isEmpty ? nil : windows
     }
 
     private static func fraction(_ http: HTTPURLResponse, _ name: String) -> Double? {

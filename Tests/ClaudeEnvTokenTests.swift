@@ -168,6 +168,42 @@ final class ClaudeEnvTokenTests: XCTestCase {
         XCTAssertEqual(reading.windows[0].label, DE.currentSession)
     }
 
+    func testMessagesResponseWithOnlyWeeklyHeaderReturnsWeekly() async throws {
+        let recorder = ClaudeRequestRecorder()
+        let keychainReads = CallCounter()
+        ClaudeEnvURLProtocol.handler = { request in
+            recorder.append(request)
+            return Self.response(
+                for: request,
+                status: 200,
+                json: #"{"five_hour":{"utilization":99}}"#,
+                headers: [
+                    "anthropic-ratelimit-unified-7d-utilization": "0.82",
+                    "anthropic-ratelimit-unified-7d-reset": "1793826000",
+                    "anthropic-ratelimit-unified-status": "allowed_warning",
+                    "anthropic-ratelimit-unified-representative-claim": "seven_day"
+                ]
+            )
+        }
+        let provider = makeProvider(
+            loadEnvironment: { Self.credential("env-token") },
+            loadKeychain: {
+                keychainReads.increment()
+                return Self.credential("keychain-token")
+            }
+        )
+        let reading = try await provider.fetch()
+        XCTAssertEqual(keychainReads.count, 0)
+        XCTAssertEqual(recorder.requests.count, 1)
+        assertMessagesProbe(recorder.requests[0], token: "env-token")
+        XCTAssertEqual(reading.windows.map(\.id), ["weekly_all"])
+        XCTAssertEqual(reading.windows[0].usedFraction ?? -1, 0.82, accuracy: 0.0001)
+        XCTAssertEqual(reading.windows[0].resetsAt, Date(timeIntervalSince1970: 1_793_826_000))
+        XCTAssertEqual(reading.windows[0].label, DE.allModels)
+        XCTAssertEqual(reading.headlineID, "weekly_all")
+        XCTAssertEqual(reading.usedFraction ?? -1, 0.82, accuracy: 0.0001)
+    }
+
     func testMessagesRateLimitWithoutUtilizationThrows() async throws {
         let recorder = ClaudeRequestRecorder()
         let keychainReads = CallCounter()
@@ -227,6 +263,44 @@ final class ClaudeEnvTokenTests: XCTestCase {
         XCTAssertEqual(reading.windows[1].usedFraction ?? -1, 0.91, accuracy: 0.0001)
         XCTAssertEqual(reading.headlineID, "weekly_all")
         XCTAssertEqual(reading.usedFraction ?? -1, 0.91, accuracy: 0.0001)
+    }
+
+    func testMessagesRateLimitWithOnlyWeeklyHeaderReturnsWeekly() async throws {
+        let recorder = ClaudeRequestRecorder()
+        let keychainReads = CallCounter()
+        ClaudeEnvURLProtocol.handler = { request in
+            recorder.append(request)
+            return Self.response(
+                for: request,
+                status: 429,
+                json: #"{"error":"rate_limited"}"#,
+                headers: [
+                    "Retry-After": "3550",
+                    "anthropic-ratelimit-unified-7d-utilization": "0.82",
+                    "anthropic-ratelimit-unified-7d-reset": "1793826000",
+                    "anthropic-ratelimit-unified-status": "allowed_warning",
+                    "anthropic-ratelimit-unified-representative-claim": "seven_day"
+                ]
+            )
+        }
+        let provider = makeProvider(
+            loadEnvironment: { Self.credential("env-token") },
+            loadKeychain: {
+                keychainReads.increment()
+                return Self.credential("keychain-token")
+            }
+        )
+        let reading = try await provider.fetch()
+        XCTAssertEqual(keychainReads.count, 0)
+        XCTAssertEqual(recorder.requests.count, 1)
+        assertMessagesProbe(recorder.requests[0], token: "env-token")
+        XCTAssertEqual(reading.status, .ok)
+        XCTAssertEqual(reading.windows.map(\.id), ["weekly_all"])
+        XCTAssertEqual(reading.windows[0].usedFraction ?? -1, 0.82, accuracy: 0.0001)
+        XCTAssertEqual(reading.windows[0].resetsAt, Date(timeIntervalSince1970: 1_793_826_000))
+        XCTAssertEqual(reading.windows[0].label, DE.allModels)
+        XCTAssertEqual(reading.headlineID, "weekly_all")
+        XCTAssertEqual(reading.usedFraction ?? -1, 0.82, accuracy: 0.0001)
     }
 
     func testProcessEnvironmentTokenSkipsShell() {
