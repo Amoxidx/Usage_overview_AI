@@ -376,7 +376,7 @@ enum ClaudeOAuthParser {
         mergeNamed(root["five_hour"], id: "session", into: &windows)
         mergeNamed(root["seven_day"], id: "weekly_all", into: &windows)
 
-        guard windows.contains(where: { $0.id == "session" }) else {
+        guard !windows.isEmpty else {
             throw UsageFetchError.badResponse(status: 0)
         }
         return windows.sorted { order($0.id) < order($1.id) }
