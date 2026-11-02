@@ -53,8 +53,26 @@ final class ClaudeOAuthParsingTests: XCTestCase {
         XCTAssertEqual(windows[1].usedFraction ?? -1, 0.93, accuracy: 0.0001)
     }
 
-    func testMissingSessionThrows() {
-        let json = Data(#"{"seven_day":{"utilization":40}}"#.utf8)
+    func testWeeklyOnlyWithoutSessionParses() throws {
+        let json = """
+        {
+          "five_hour": null,
+          "seven_day": {"utilization": 79.0, "resets_at": "2026-11-04T21:00:00.585165+00:00"},
+          "limits": [
+            {"kind": "weekly_all", "group": "weekly", "percent": 79, "resets_at": "2026-11-04T21:00:00.585165+00:00", "is_active": true},
+            {"kind": "weekly_scoped", "group": "weekly", "percent": 6, "resets_at": "2026-11-04T20:59:59.585333+00:00", "scope": {"model": {"id": null, "display_name": "Fable"}}, "is_active": false}
+          ]
+        }
+        """.data(using: .utf8)!
+        let windows = try ClaudeOAuthParser.windows(from: json)
+        XCTAssertEqual(windows.map(\.id), ["weekly_all", "weekly_scoped"])
+        XCTAssertEqual(windows[0].usedFraction ?? -1, 0.79, accuracy: 0.0001)
+        XCTAssertEqual(windows[1].usedFraction ?? -1, 0.06, accuracy: 0.0001)
+        XCTAssertNotNil(windows[0].resetsAt)
+    }
+
+    func testNoWindowsThrows() {
+        let json = Data(#"{"five_hour":null,"seven_day":null,"limits":[]}"#.utf8)
         XCTAssertThrowsError(try ClaudeOAuthParser.windows(from: json)) { error in
             guard case UsageFetchError.badResponse = error else {
                 return XCTFail("expected badResponse, got \(error)")

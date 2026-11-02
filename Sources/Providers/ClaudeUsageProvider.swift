@@ -5,9 +5,9 @@ import Foundation
 /// zsh / `~/.zshenv`) is sent as a 1-token `POST /v1/messages` (default model
 /// alias `claude-haiku-4-5`); windows come from `anthropic-ratelimit-unified-*`
 /// headers, because `GET /api/oauth/usage` permanently answers that token type
-/// with 429. A 404, or a non-2xx/429 without the 5h header, lists
+/// with 429. A 404, or a non-2xx/429 without 5h or 7d utilization, lists
 /// `GET /v1/models` and tries haiku ids first, then the rest, at most four
-/// extra probes. The first model that returns the header is remembered. A
+/// extra probes. The first model that returns either utilization is remembered. A
 /// search that finds none waits an hour before listing models again. A
 /// successful env reading is reused for `envHeaderCacheInterval` (default
 /// 300s) without another request; the stored `fetchedAt` is kept. The keychain
@@ -29,7 +29,7 @@ actor ClaudeUsageProvider: UsageProvider {
     private let envHeaderCacheInterval: TimeInterval
     private let now: @Sendable () -> Date
 
-    /// Last model whose messages probe carried `5h-utilization`.
+    /// Last model whose messages probe carried `5h-utilization` or `7d-utilization`.
     private var preferredProbeModel: String?
     /// Start of the hour in which a completed search found no usable model.
     private var modelSearchFailedAt: Date?
