@@ -17,6 +17,20 @@ final class ClaudeUsageParsingTests: XCTestCase {
         XCTAssertNotNil(windows[0].resetsAt)
     }
 
+    func testScratchDirectoryIsStableAndNamedUsageoverviewScratch() {
+        let first = ClaudeUsageParser.scratchDirectory
+        let second = ClaudeUsageParser.scratchDirectory
+        XCTAssertEqual(first.path, second.path)
+        XCTAssertEqual(first.lastPathComponent, "usageoverview-scratch")
+    }
+
+    func testUsageArgumentsAreNoSessionPersistenceThenUsage() {
+        XCTAssertEqual(
+            ClaudeUsageParser.usageArguments,
+            ["--no-session-persistence", "/usage"]
+        )
+    }
+
     func testMissingSessionThrows() {
         let text = "Current week (all models): 4% used · resets tomorrow"
         XCTAssertThrowsError(try ClaudeUsageParser.parse(text)) { error in
