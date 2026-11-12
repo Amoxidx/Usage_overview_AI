@@ -171,6 +171,15 @@ actor ClaudeUsageProvider: UsageProvider {
 }
 
 enum ClaudeUsageParser {
+    /// Stable temp cwd so two fetches do not delete each other's directory.
+    static var scratchDirectory: URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("usageoverview-scratch", isDirectory: true)
+    }
+
+    /// Flag first: a fresh cwd still creates a project dir, but no session file.
+    static let usageArguments: [String] = ["--no-session-persistence", "/usage"]
+
     /// Locate common Claude Code install paths and run `/usage`.
     static func runClaudeUsage() throws -> String {
         let home = URL(fileURLWithPath: NSHomeDirectory())
@@ -184,14 +193,12 @@ enum ClaudeUsageParser {
         guard let binary = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0.path) })
         else { throw UsageFetchError.unavailable("claude nicht installiert") }
 
-        let scratch = FileManager.default.temporaryDirectory
-            .appendingPathComponent("usageoverview-\(UUID().uuidString)", isDirectory: true)
+        let scratch = scratchDirectory
         try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: scratch) }
 
         let process = Process()
         process.executableURL = binary
-        process.arguments = ["/usage"]
+        process.arguments = usageArguments
         process.currentDirectoryURL = scratch
         process.standardInput = FileHandle.nullDevice
         let out = Pipe()
